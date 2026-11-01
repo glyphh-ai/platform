@@ -13,8 +13,13 @@ const clientDir = 'dist/client';
 const indexHtml = await readFile(`${clientDir}/index.html`, 'utf8');
 
 app.use('/assets/*', serveStatic({ root: clientDir, onFound: (_path, c) => c.header('cache-control', 'public, max-age=31536000, immutable') }));
-app.use('*', serveStatic({ root: clientDir }));
-app.get('*', (c) => c.html(indexHtml));
+// Everything else (index.html above all) is checked with the server on every load, so a deploy shows at once: a
+// browser that kept an old index.html would keep loading the old build's assets.
+app.use('*', serveStatic({ root: clientDir, onFound: (_path, c) => c.header('cache-control', 'no-cache') }));
+app.get('*', (c) => {
+  c.header('cache-control', 'no-cache');
+  return c.html(indexHtml);
+});
 
 // demo.glyphh.ai: its own page and its own /api, nothing of the platform's (no sign-in, no session, no /api/v1).
 const demoConfig = readDemoConfig();
