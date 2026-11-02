@@ -49,6 +49,45 @@ describe('Apps', () => {
     ]);
   });
 
+  describe('what each app needs', () => {
+    it('says the app runs as the viewer, with its CLIs each viewer signs in to', async () => {
+      renderApp('/apps');
+      const [failures] = await vi.waitFor(() => cards());
+      const line = within(failures!).getByText(/Runs as the viewer/);
+      expect(line).toHaveTextContent('Runs as the viewer · bq, gh (each viewer signs in)');
+      expect(line).toHaveClass('needs');
+      expect(within(failures!).queryByText(/not set on the rrotor/)).not.toBeInTheDocument();
+    });
+
+    it('says the app runs as itself, its CLI signed in once by an admin, and names a secret not set in the warning tone', async () => {
+      renderApp('/apps');
+      const [, prs] = await vi.waitFor(() => cards());
+      const line = within(prs!).getByText(/Runs as the app/);
+      expect(line).toHaveTextContent('Runs as the app · gh (signed in once by an admin) · secrets: GH_TOKEN not set on the rrotor');
+      const missing = within(prs!).getByText('GH_TOKEN not set on the rrotor');
+      expect(missing).toHaveClass('warning');
+      // A member gets no hint about setting it.
+      expect(line).not.toHaveTextContent('secret_set');
+    });
+
+    it('hints a reviewer to set the missing secret with secret_set on the rrotor', async () => {
+      server.use(asReviewer());
+      renderApp('/apps');
+      await screen.findByRole('tablist');
+      const [, prs] = await vi.waitFor(() => cards());
+      const line = within(prs!).getByText(/Runs as the app/);
+      expect(line).toHaveTextContent('Runs as the app · gh (signed in once by an admin) · secrets: GH_TOKEN not set on the rrotor · set it with secret_set on the rrotor');
+      expect(within(line).getByText('secret_set').tagName).toBe('CODE');
+    });
+
+    it('says nothing on an app that needs nothing', async () => {
+      renderApp('/apps');
+      const [, , onCall] = await vi.waitFor(() => cards());
+      expect(within(onCall!).queryByText(/Runs as/)).not.toBeInTheDocument();
+      expect(within(onCall!).queryByText(/secrets/)).not.toBeInTheDocument();
+    });
+  });
+
   it('sends the old /artifacts here, with its query string', async () => {
     const { router } = renderApp('/artifacts?q=on-call&type=doc');
     expect(await screen.findByRole('heading', { name: 'Apps', level: 1 })).toBeInTheDocument();

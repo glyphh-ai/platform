@@ -245,6 +245,13 @@ export type App = {
   /** The roles that may open it; empty: everyone in the org. */
   roles: string[];
   state: AppState;
+  /** Whose sign-ins its calls run with: each viewer's own, or the app's (its CLIs signed in once by an admin). */
+  run_as: 'viewer' | 'app';
+  /** The CLIs on the rrotor it calls. */
+  clis: string[];
+  /** The secrets it declares, and those not set in the rrotor's vault. */
+  secrets: string[];
+  secrets_missing: string[];
   submitted_by: { id: Uuid; name: string | null; email: string } | null;
   submitted_at: IsoDate;
   reviewed_by: { id: Uuid; name: string | null; email: string } | null;

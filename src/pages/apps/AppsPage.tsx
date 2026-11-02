@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { useApproveApp, useApps, useMe, useRejectApp, useRetireApp } from '@/api/queries';
 import type { App, AppState, AppType } from '@/api/types';
@@ -169,6 +169,41 @@ function who(by: App['submitted_by']): string {
   return by?.name ?? by?.email ?? 'someone';
 }
 
+/**
+ * What the app needs (spec 4.7), one dim line, only when it needs anything: whose sign-ins it runs with, its CLIs
+ * and who signs them in, its secrets. A secret not set on the rrotor is named in the warning colour, with a hint
+ * for a reviewer that `secret_set` on the rrotor sets it.
+ */
+function Needs({ app, reviewer }: { app: App; reviewer: boolean }) {
+  const asApp = app.run_as === 'app';
+  if (!asApp && app.clis.length === 0 && app.secrets.length === 0) return null;
+  const missing = app.secrets_missing;
+  return (
+    <div className={styles.needs}>
+      {asApp ? 'Runs as the app' : 'Runs as the viewer'}
+      {app.clis.length > 0 && ` · ${app.clis.join(', ')} (${asApp ? 'signed in once by an admin' : 'each viewer signs in'})`}
+      {app.secrets.length > 0 && (
+        <>
+          {' · secrets: '}
+          {app.secrets.map((secret, i) => (
+            <Fragment key={secret}>
+              {i > 0 && ', '}
+              {missing.includes(secret) ? <span className={styles.warning}>{secret} not set on the rrotor</span> : secret}
+            </Fragment>
+          ))}
+        </>
+      )}
+      {reviewer && missing.length > 0 && (
+        <>
+          {` · set ${missing.length === 1 ? 'it' : 'them'} with `}
+          <code className={styles.code}>secret_set</code>
+          {' on the rrotor'}
+        </>
+      )}
+    </div>
+  );
+}
+
 function AppCard({ app, reviewer }: { app: App; reviewer: boolean }) {
   const toast = useToast();
   const approve = useApproveApp();
@@ -205,6 +240,7 @@ function AppCard({ app, reviewer }: { app: App; reviewer: boolean }) {
       <div className={styles.chips}>
         {app.roles.length === 0 ? <Chip>Everyone</Chip> : app.roles.map((role) => <Chip key={role} tone="blue">{role}</Chip>)}
       </div>
+      <Needs app={app} reviewer={reviewer} />
       <div className={styles.meta}>
         Published by {who(app.submitted_by)} · {date(app.submitted_at)}
       </div>

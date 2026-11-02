@@ -173,6 +173,10 @@ function app(n: number, over: Partial<App> = {}): App {
     commit_sha: `${n}`.padStart(40, 'a'),
     roles: [],
     state: 'approved',
+    run_as: 'viewer',
+    clis: [],
+    secrets: [],
+    secrets_missing: [],
     submitted_by: chris,
     submitted_at: '2026-10-28T09:00:00Z',
     reviewed_by: chris,
@@ -183,10 +187,14 @@ function app(n: number, over: Partial<App> = {}): App {
   };
 }
 
-/** The org's apps, every state and a spread of types: three published (one for a role), one awaiting review, one rejected. */
+/**
+ * The org's apps, every state and a spread of types: three published (one for a role), one awaiting review, one
+ * rejected. What they need (4.7): the first runs as the viewer with two CLIs, the second as the app with `gh` and a
+ * secret not yet set on the rrotor, the rest need nothing.
+ */
 export const apps: App[] = [
-  app(1, { name: 'deploy-failures', title: 'Deploy failures', description: "Last week's deploy failures by service, from the deploy log and GitHub.", type: 'dashboard' }),
-  app(2, { name: 'open-prs', title: 'Open pull requests', description: 'Every open pull request across the org, oldest first.', type: 'page', roles: ['sre', 'admin'], submitted_by: sam }),
+  app(1, { name: 'deploy-failures', title: 'Deploy failures', description: "Last week's deploy failures by service, from the deploy log and GitHub.", type: 'dashboard', clis: ['bq', 'gh'] }),
+  app(2, { name: 'open-prs', title: 'Open pull requests', description: 'Every open pull request across the org, oldest first.', type: 'page', roles: ['sre', 'admin'], submitted_by: sam, run_as: 'app', clis: ['gh'], secrets: ['GH_TOKEN'], secrets_missing: ['GH_TOKEN'] }),
   app(3, { name: 'on-call', title: 'On-call handover', description: 'The pages and incidents of the week, for the handover.', type: 'doc', runtime_id: 'rt-self-2', runtime_name: 'Lab', runtime_url: 'https://rrotor.lab.acme.com', url: 'https://rrotor.lab.acme.com/apps/on-call/' }),
   app(4, { name: 'cost-board', title: 'Cloud cost board', description: 'Spend by account and service, month to date.', type: 'diagram', state: 'draft', submitted_by: sam, submitted_at: '2026-10-31T15:00:00Z', reviewed_by: null, reviewed_at: null }),
   app(5, { name: 'churn', title: 'Churn risk', description: 'Accounts likely to churn this quarter.', type: 'deck', state: 'rejected', submitted_by: sam, reason: 'Names customers; use account ids.', reviewed_at: '2026-10-30T12:00:00Z' }),
