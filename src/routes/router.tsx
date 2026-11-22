@@ -11,8 +11,7 @@ import { AdaModelsPage } from '@/pages/ada/AdaModelsPage';
 import { AppsPage } from '@/pages/apps/AppsPage';
 import { ApprovalsPage } from '@/pages/bots/ApprovalsPage';
 import { BotsShell } from '@/pages/bots/shell/BotsShell';
-import { SwarmPage } from '@/pages/swarms/SwarmPage';
-import { NewSwarmPage, SwarmsPage } from '@/pages/swarms/SwarmsPage';
+import { ProjectPage, ProjectsPage } from '@/pages/projects/ProjectsPage';
 import { GitHubTokenPage } from '@/pages/settings/GitHubTokenPage';
 import { ConnectionPage } from '@/pages/connections/ConnectionPage';
 import { ConnectionsPage } from '@/pages/connections/ConnectionsPage';
@@ -57,6 +56,20 @@ function Moved({ to }: { to: string }) {
 function MovedWithHash({ to }: { to: string }) {
   const { search, hash } = useLocation();
   return <Navigate to={`${to}${search}${hash}`} replace />;
+}
+
+/** A swarm's old page, at its project (swarms became projects, 2026-11-22); `?run=` comes along. */
+function MovedSwarm() {
+  const { name = '' } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={`/projects/${encodeURIComponent(name)}${search}`} replace />;
+}
+
+/** A new project is a modal on the list: the old pages for one open it there, the query string kept. */
+function NewProject() {
+  const params = new URLSearchParams(useLocation().search);
+  params.set('new', '1');
+  return <Navigate to={`/projects?${params}`} replace />;
 }
 
 /** A template's old page, at its place in the Marketplace. */
@@ -179,9 +192,13 @@ export const routes: RouteObject[] = [
       { path: 'bots', element: <BotsShell />, handle: { crumbs: [{ label: 'Bots' }], bare: true } },
       { path: 'bots/:name', element: <BotsShell />, handle: { crumbs: [{ label: 'Bots', to: '/bots' }, { label: ':name' }], bare: true } },
       { path: 'approvals', element: <ApprovalsPage />, handle: { crumbs: [{ label: 'Bots' }, { label: 'Approvals' }] } },
-      { path: 'swarms', element: <SwarmsPage />, handle: { crumbs: [{ label: 'Bots' }, { label: 'Swarms' }] } },
-      { path: 'swarms/new', element: <NewSwarmPage />, handle: { crumbs: [{ label: 'Swarms', to: '/swarms' }, { label: 'New swarm' }] } },
-      { path: 'swarms/:name', element: <SwarmPage />, handle: { crumbs: [{ label: 'Swarms', to: '/swarms' }, { label: ':name' }] } },
+      // Projects (swarms until 2026-11-22): a crew of the org's bots on one repo. A new one is a modal on the list.
+      { path: 'projects', element: <ProjectsPage />, handle: { crumbs: [{ label: 'Bots' }, { label: 'Projects' }] } },
+      { path: 'projects/new', element: <NewProject /> },
+      { path: 'projects/:name', element: <ProjectPage />, handle: { crumbs: [{ label: 'Projects', to: '/projects' }, { label: ':name' }] } },
+      { path: 'swarms', element: <Moved to="/projects" /> },
+      { path: 'swarms/new', element: <NewProject /> },
+      { path: 'swarms/:name', element: <MovedSwarm /> },
       { path: 'connections', element: <ConnectionsPage />, handle: { crumbs: [{ label: 'Bots' }, { label: 'Connections' }] } },
       {
         path: 'connections/:name',

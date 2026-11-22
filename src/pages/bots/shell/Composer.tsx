@@ -53,13 +53,15 @@ type Props = {
   /** Why nothing can be sent right now, said under the bar. */
   note?: ReactNode;
   focusKey: string;
+  /** Send works with nothing typed (a project's crew then works from its instructions); Enter still needs words. */
+  allowEmpty?: boolean;
 };
 
 /**
  * The composer, as the Glyphh Bot app's: + (a text file's words join the task), the box that grows with what is typed,
  * the mic (the browser's own dictation, where it has one) and Send, or Stop while a run is going; under it the pills.
  */
-export function Composer({ hero, placeholder, busy, sending, onSend, onStop, children, note, focusKey }: Props) {
+export function Composer({ hero, placeholder, busy, sending, onSend, onStop, children, note, focusKey, allowEmpty }: Props) {
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -80,8 +82,8 @@ export function Composer({ hero, placeholder, busy, sending, onSend, onStop, chi
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
 
-  const go = () => {
-    if (!text.trim() || busy || sending) return;
+  const go = (empty = false) => {
+    if ((!text.trim() && !empty) || busy || sending) return;
     onSend(text.trim());
     setText('');
   };
@@ -156,7 +158,14 @@ export function Composer({ hero, placeholder, busy, sending, onSend, onStop, chi
             ■
           </button>
         ) : (
-          <button type="button" className="send" title="Send" aria-label="Send" onClick={go} disabled={!text.trim() || busy || sending}>
+          <button
+            type="button"
+            className="send"
+            title={allowEmpty && !text.trim() ? 'Send nothing: the crew works from the instructions' : 'Send'}
+            aria-label="Send"
+            onClick={() => go(allowEmpty)}
+            disabled={(!text.trim() && !allowEmpty) || busy || sending}
+          >
             ↑
           </button>
         )}

@@ -111,8 +111,8 @@ function BotsNav() {
       <NavItem to="/approvals" icon="check" badge={waiting}>
         Approvals
       </NavItem>
-      <NavItem to="/swarms" icon="team">
-        Swarms
+      <NavItem to="/projects" icon="team">
+        Projects
       </NavItem>
       <NavItem to="/connections" icon="external">
         Connections

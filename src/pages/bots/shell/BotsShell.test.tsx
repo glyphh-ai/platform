@@ -2,16 +2,19 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { botsFake, drawnMascot, inbox, waiting, weekdays } from '@/test/bots';
 import { renderApp } from '@/test/render';
 import { server } from '@/test/server';
-import { swarmsFake } from '@/test/swarms';
+import { closing, picking, projectRun, projectsFake, siteCrew, turn } from '@/test/projects';
+import { CLOUD_NOTE } from '@/pages/projects/parts';
 import { safeHref, md } from './md';
 
 /** The org's bots and connections, and its projects (none unless given). */
-function on(given?: Parameters<typeof botsFake>[0], projects: Parameters<typeof swarmsFake>[0] = { swarms: [] }) {
+function on(given?: Parameters<typeof botsFake>[0], given2: Parameters<typeof projectsFake>[0] = { projects: [] }) {
   const fake = botsFake(given);
-  const swarms = swarmsFake(projects);
-  server.use(...fake.handlers, ...swarms.handlers);
-  return Object.assign(fake, { swarms });
+  const projects = projectsFake(given2);
+  server.use(...fake.handlers, ...projects.handlers);
+  return Object.assign(fake, { projects });
 }
+
+const crewBots = { bots: [inbox(), inbox({ id: 'b-digest', slug: 'digest', name: 'Digest' })] };
 
 const decided = () =>
   waiting({
@@ -247,9 +250,113 @@ describe('a project’s crew in the Bots area', () => {
     expect(turn).toHaveTextContent('PR #41');
     expect(within(screen.getByLabelText('Turns')).getByRole('button')).toHaveTextContent('1 Inbox helper #41 open');
     await user.click(merge);
-    await waitFor(() => expect(fake.swarms.state.bodies.at(-1)).toBe('merge'));
+    await waitFor(() => expect(fake.projects.state.bodies.at(-1)).toBe('merge'));
     await waitFor(() => expect(within(screen.getByLabelText('Turns')).getAllByRole('button')[0]).toHaveTextContent('#41 merged'));
+    // The rail makes a project too, and the top bar's edit goes to the project's own page.
+    expect(within(rail).getByRole('link', { name: 'new project' })).toHaveAttribute('href', '/projects?new=1');
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Edit Site crew' })).toHaveAttribute('href', '/projects/site-crew');
   }, 15_000);
+
+  it('sets where it runs (Glyphh cloud first, with its note), the turn mode and the review from the composer’s pills', async () => {
+    const fake = on(crewBots, {});
+    const { user } = renderApp('/bots?crew=site-crew');
+    const where = await screen.findByRole('combobox', { name: 'Runs on' });
+    await waitFor(() => expect(within(where).getAllByRole('option').map((o) => o.textContent)).toEqual(['Glyphh cloud', 'Studio Mac', 'Acme (offline)']));
+    expect(where).toHaveValue('rr-studio');
+    expect(within(where).getByRole('option', { name: 'Acme (offline)' })).toBeDisabled();
+    expect(screen.queryByText(CLOUD_NOTE)).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Runs on' }), 'Glyphh cloud');
+    expect(await screen.findByText(CLOUD_NOTE)).toBeInTheDocument();
+    expect(CLOUD_NOTE).toBe(
+      "Glyphh cloud has fewer tools than a rrotor: bots can read and change files and open pull requests, but can't run commands, tests or a browser. Choose a rrotor for those.",
+    );
+    await waitFor(() => expect(screen.getByRole('contentinfo')).toHaveTextContent('Runs on Glyphh cloud'));
+
+    const mode = screen.getByRole('combobox', { name: 'Turn mode' });
+    expect(within(mode).getAllByRole('option').map((o) => o.textContent)).toEqual(['Wait your turn', 'Orchestrator: Claude', 'Orchestrator: Inbox helper', 'Orchestrator: Digest']);
+    expect(mode).toHaveValue('wait');
+    await waitFor(() => expect(mode).toBeEnabled());
+    await user.selectOptions(mode, 'Orchestrator: Digest');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Turn mode' })).toHaveValue('orchestrator:b-digest'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Turn mode' })).toBeEnabled());
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Turn mode' }), 'Orchestrator: Claude');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Turn mode' })).toHaveValue('orchestrator:'));
+
+    const review = screen.getByRole('combobox', { name: 'Pull requests' });
+    expect(within(review).getAllByRole('option').map((o) => o.textContent)).toEqual(['Each turn', 'At the end']);
+    await waitFor(() => expect(review).toBeEnabled());
+    await user.selectOptions(review, 'end');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Pull requests' })).toHaveValue('end'));
+    expect(fake.projects.state.bodies).toEqual([
+      { runs_on: null },
+      { turn_mode: 'orchestrator', orchestrator: 'b-digest' },
+      { turn_mode: 'orchestrator', orchestrator: null },
+      { review: 'end' },
+    ]);
+    expect(screen.queryByRole('combobox', { name: /round/i })).not.toBeInTheDocument();
+  });
+
+  it('shows who the orchestrator chose and why, and that it is choosing the next', async () => {
+    on(crewBots, {
+      projects: [siteCrew({ turn_mode: 'orchestrator' })],
+      runs: [projectRun({ status: 'running', turn_mode: 'orchestrator', turns: [turn(1, { status: 'merged', picked_by: 'orchestrator', why: 'The home page comes first.' }), picking(2)] })],
+    });
+    renderApp('/bots?crew=site-crew');
+    expect(await screen.findByText('Orchestrator chose Inbox helper · The home page comes first.')).toBeInTheDocument();
+    expect(screen.getByText('Choosing who goes next…')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('article', { name: 'Inbox helper: turn 1' })).toHaveTextContent('PR #41');
+    // The one being picked has no chip yet.
+    expect(within(screen.getByLabelText('Turns')).getAllByRole('button').map((b) => b.textContent)).toEqual(['1 Inbox helper #41 merged']);
+    expect(screen.getByRole('combobox', { name: 'Turn mode' })).toHaveValue('orchestrator:');
+  });
+
+  it('with review at the end, shows the run’s one pull request of it all and merges it', async () => {
+    const fake = on(crewBots, {
+      projects: [siteCrew({ review: 'end' })],
+      runs: [projectRun({ review: 'end', work_branch: 'run-pr-1-k3x9', pr_url: 'https://github.com/acme/site/pull/50', number: 50, turns: [turn(1, { status: 'merged' }), turn(2, { status: 'merged' })] })],
+    });
+    const { user } = renderApp('/bots?crew=site-crew');
+    const whole = await screen.findByRole('region', { name: 'The run’s pull request' });
+    expect(whole).toHaveTextContent('PR #50');
+    expect(within(whole).getByText('Merge the whole run?')).toBeInTheDocument();
+    expect(within(whole).getByRole('link', { name: 'https://github.com/acme/site/pull/50' })).toBeInTheDocument();
+    expect(within(whole).getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    expect(within(screen.getByRole('article', { name: 'Inbox helper: turn 1' })).queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument();
+    await user.click(within(whole).getByRole('button', { name: 'Merge' }));
+    expect(await screen.findByText("The crew said it's done")).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'The run’s pull request' })).not.toBeInTheDocument();
+    expect(fake.projects.state.bodies).toEqual(['merge']);
+  });
+
+  it('shows the orchestrator’s closing turn, a turn with no changes and why the run ended, and starts a run with no task', async () => {
+    const fake = on(crewBots, {
+      projects: [siteCrew({ runs_on: null, turn_mode: 'orchestrator' })],
+      runs: [
+        projectRun({
+          task: '',
+          status: 'done',
+          ended: 'orchestrator',
+          runs_on: null,
+          turn_mode: 'orchestrator',
+          turns: [
+            turn(1, { status: 'merged', picked_by: 'orchestrator' }),
+            turn(2, { status: 'unchanged', picked_by: 'orchestrator', said: '', pr_url: null, number: null, files: [], done: false }),
+            closing(3, 'Everything in PROJECT.md is built.'),
+          ],
+        }),
+      ],
+    });
+    const { user } = renderApp('/bots?crew=site-crew');
+    expect(await screen.findByText('(from the instructions)')).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Digest: turn 2' })).toHaveTextContent('passed · no changes');
+    expect(screen.getByRole('article', { name: 'Orchestrator: turn 3' })).toHaveTextContent('Everything in PROJECT.md is built.');
+    expect(screen.getByText("The orchestrator said it's done")).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Turns')).getAllByRole('button').map((b) => b.textContent)).toEqual(['1 Inbox helper #41 merged', '2 Digest no changes', '3 Orchestrator done']);
+    expect(screen.getByText(CLOUD_NOTE)).toBeInTheDocument();
+    // Nothing typed: Send starts a run from the instructions alone.
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(fake.projects.state.bodies).toEqual([{ task: '' }]));
+  });
 });
 
 describe('the bot editor, a modal as the Glyphh Bot app’s', () => {

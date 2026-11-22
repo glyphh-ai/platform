@@ -96,9 +96,9 @@ export type BotRun = {
   own_key: boolean;
   /** The org's rrotor it ran on; none for Glyphh cloud. */
   runs_on?: string | null;
-  /** `swarm`: in the approvals queue, a swarm's pull request waiting for merge or reject (`swarm_slug` its swarm). */
-  kind?: 'bot' | 'swarm';
-  swarm_slug?: string | null;
+  /** `project`: in the approvals queue, a project's pull request waiting for merge or reject (`project_slug` its project). */
+  kind?: 'bot' | 'project';
+  project_slug?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

@@ -6,7 +6,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { connectionsOff, useBotKey, useConnections, useSyncConnections, working, type Bot, type Connection } from '@/api/bots';
 import { useMe } from '@/api/queries';
-import type { Swarm } from '@/api/swarms';
+import type { Project } from '@/api/projects';
 import { botPath } from '../parts';
 import { botTag, BotCat, useEscape, useShell } from './bits';
 import { Icon, ICON } from './icons';
@@ -25,13 +25,13 @@ export function ConnectorIcon({ name, icon, size = 20 }: { name: string; icon: s
   );
 }
 
-type BotsProps = { bots: Bot[] | undefined; swarms: Swarm[]; room: { kind: 'bot' | 'crew'; slug: string } | null; waiting: Map<string, number> };
+type BotsProps = { bots: Bot[] | undefined; projects: Project[]; room: { kind: 'bot' | 'crew'; slug: string } | null; waiting: Map<string, number> };
 
-function Bots({ bots, swarms, room, waiting }: BotsProps) {
+function Bots({ bots, projects, room, waiting }: BotsProps) {
   const shell = useShell();
   return (
     <div className="rail-scroll">
-      {swarms.map((s) => (
+      {projects.map((s) => (
         <Link key={s.id} to={crewPath(s.slug)} className={room?.kind === 'crew' && room.slug === s.slug ? 'bot crew on' : 'bot crew'} aria-current={room?.kind === 'crew' && room.slug === s.slug ? 'page' : undefined}>
           <div className="stack">
             {s.members.slice(0, 4).map((m) => {
@@ -50,7 +50,12 @@ function Bots({ bots, swarms, room, waiting }: BotsProps) {
         </Link>
       ))}
 
-      <div className="rail-label">Bots</div>
+      <div className="rail-label">
+        Bots
+        <Link className="link" to="/projects?new=1">
+          new project
+        </Link>
+      </div>
       {bots === undefined && <p className="dim pad">Reading your bots…</p>}
       {bots?.length === 0 && <p className="dim pad">No bots yet.</p>}
       <nav aria-label="Your bots">

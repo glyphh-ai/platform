@@ -3,14 +3,14 @@ import { useApprovals, useBots } from '@/api/bots';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
 import { PageHeader } from '@/layout/PageHeader/PageHeader';
 import { EmptyState, Skeleton } from '@/ui';
-import { SwarmWaiting } from '../swarms/parts';
+import { ProjectWaiting } from '../projects/parts';
 import { WaitingRun } from './parts';
 import cs from '../connections/connections.module.css';
 import styles from './bots.module.css';
 
 /**
  * Every run of the org's bots waiting on someone, oldest first, each answered (one item or a batch) or cancelled here;
- * and each swarm's pull request waiting for a merge or a reject.
+ * and each project's pull request waiting for a merge or a reject.
  */
 export function ApprovalsPage() {
   const approvals = useApprovals();
@@ -21,7 +21,7 @@ export function ApprovalsPage() {
     <div className={cs.page}>
       <PageHeader
         title="Approvals"
-        description="Your bots wait here when a step needs your yes: a tool that needs approval, or a gate that is not sure yet. What you answer, the gates learn. Your swarms’ pull requests wait here too."
+        description="Your bots wait here when a step needs your yes: a tool that needs approval, or a gate that is not sure yet. What you answer, the gates learn. Your projects’ pull requests wait here too."
       />
       <ApiErrorNotice error={approvals.error} />
       {approvals.isPending && (
@@ -44,7 +44,7 @@ export function ApprovalsPage() {
         <div className={styles.stack} aria-label="Waiting runs" role="list">
           {approvals.data.map((run) => (
             <div key={run.id} role="listitem">
-              {run.kind === 'swarm' ? <SwarmWaiting run={run} /> : <WaitingRun run={run} botName={names.get(run.bot_slug)} />}
+              {run.kind === 'project' ? <ProjectWaiting run={run} /> : <WaitingRun run={run} botName={names.get(run.bot_slug)} />}
             </div>
           ))}
         </div>

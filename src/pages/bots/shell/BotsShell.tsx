@@ -5,10 +5,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useApprovals, useBotPlaces, useBotRuns, useBots, useConnections, type Bot, type Connection } from '@/api/bots';
 import { useMe } from '@/api/queries';
-import { useSwarmRuns, useSwarms, type Swarm } from '@/api/swarms';
+import { useProjectRuns, useProjects, type Project } from '@/api/projects';
 import { useShellNav } from '@/layout/AppShell/AppShell';
 import { ago } from '@/lib/format';
 import { ToolsPanel } from '@/pages/connections/ToolsPanel';
+import { projectPath } from '@/pages/projects/parts';
 import { GatesTab } from '../GatesTab';
 import { botPath } from '../parts';
 import { ToolsTab } from '../ToolsTab';
@@ -102,9 +103,9 @@ function BotRecents({ bot, onPick, onNew }: { bot: Bot; onPick: (id: string) => 
   return <Recents rows={rows} onPick={onPick} onNew={onNew} />;
 }
 
-function CrewRecents({ swarm, onPick, onNew }: { swarm: Swarm; onPick: (id: string) => void; onNew: () => void }) {
-  const runs = useSwarmRuns(swarm.slug);
-  const rows = runs.data?.map((r) => ({ id: r.id, title: r.task || 'Run', who: <Icon d={ICON.chat} size={14} />, sub: `${swarm.name} · ${ago(r.created_at)}` }));
+function CrewRecents({ project, onPick, onNew }: { project: Project; onPick: (id: string) => void; onNew: () => void }) {
+  const runs = useProjectRuns(project.slug);
+  const rows = runs.data?.map((r) => ({ id: r.id, title: r.task || 'Run', who: <Icon d={ICON.chat} size={14} />, sub: `${project.name} · ${ago(r.created_at)}` }));
   return <Recents rows={rows} onPick={onPick} onNew={onNew} />;
 }
 
@@ -135,7 +136,7 @@ function Panel({ icon, title, onClose, plain, children }: { icon: ReactNode; tit
   );
 }
 
-function StatusBar({ ok, connectors, bot, swarm }: { ok: boolean; connectors: number | undefined; bot: Bot | undefined; swarm: Swarm | undefined }) {
+function StatusBar({ ok, connectors, bot, project }: { ok: boolean; connectors: number | undefined; bot: Bot | undefined; project: Project | undefined }) {
   const { data: me } = useMe();
   const places = useBotPlaces();
   const place = (id: string | null | undefined) => (id ? (places.data?.find((p) => p.id === id)?.name ?? 'your machine') : 'Glyphh cloud');
@@ -152,7 +153,7 @@ function StatusBar({ ok, connectors, bot, swarm }: { ok: boolean; connectors: nu
           <i key={i} style={{ animationDelay: `${(i * 137) % 900}ms` }} />
         ))}
       </span>
-      {(bot || swarm) && <span className="stat">Runs on {place(bot ? bot.runs_on : swarm!.runs_on)}</span>}
+      {(bot || project) && <span className="stat">Runs on {place(bot ? bot.runs_on : project!.runs_on)}</span>}
       {me && (
         <span className="stat">
           {me.plan.name} · {me.precedents.used.toLocaleString('en-GB')}
@@ -169,7 +170,7 @@ export function BotsShell() {
   const nav = useShellNav();
   const [params, setParams] = useSearchParams();
   const bots = useBots();
-  const swarms = useSwarms();
+  const projects = useProjects();
   const approvals = useApprovals();
   const connections = useConnections();
   const [toast, setToast] = useState('');
@@ -177,8 +178,8 @@ export function BotsShell() {
   const [railOpen, setRailOpen] = useState(false);
 
   // The room: the bot in the address, the crew in ?crew=, else the first project's crew, else the first bot.
-  const settled = !bots.isPending && !swarms.isPending;
-  const crews = swarms.data ?? [];
+  const settled = !bots.isPending && !projects.isPending;
+  const crews = projects.data ?? [];
   const asked = params.get('crew');
   const room: Room | null = name
     ? { kind: 'bot', slug: name }
@@ -192,7 +193,7 @@ export function BotsShell() {
             ? { kind: 'bot', slug: bots.data[0].slug }
             : null;
   const bot = room?.kind === 'bot' ? bots.data?.find((b) => b.slug === room.slug) : undefined;
-  const swarm = room?.kind === 'crew' ? crews.find((s) => s.slug === room.slug) : undefined;
+  const project = room?.kind === 'crew' ? crews.find((s) => s.slug === room.slug) : undefined;
   const roomKey = room ? `${room.kind}:${room.slug}` : '';
 
   const set = useCallback(
@@ -245,7 +246,7 @@ export function BotsShell() {
 
   const waiting = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of approvals.data ?? []) if (r.kind !== 'swarm') m.set(r.bot_slug, (m.get(r.bot_slug) ?? 0) + 1);
+    for (const r of approvals.data ?? []) if (r.kind !== 'project') m.set(r.bot_slug, (m.get(r.bot_slug) ?? 0) + 1);
     return m;
   }, [approvals.data]);
 
@@ -259,8 +260,8 @@ export function BotsShell() {
   };
   const closeEditor = () => set({ edit: null, new: null });
   const shownPanels = PANELS.filter((p) => open.includes(p.id) && bot);
-  const missing = room && settled && !bot && !swarm;
-  const repo = swarm?.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
+  const missing = room && settled && !bot && !project;
+  const repo = project?.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
 
   return (
     <ShellContext.Provider value={api}>
@@ -278,14 +279,14 @@ export function BotsShell() {
               <img src="/glyphh-logo-text-white.png" alt="Glyphh" />
               <span>Bot</span>
             </div>
-            {swarm && repo && (
-              <a className="chip" href={swarm.repo_url} target="_blank" rel="noreferrer" title="The project’s repo">
+            {project && repo && (
+              <a className="chip" href={project.repo_url} target="_blank" rel="noreferrer" title="The project’s repo">
                 <Icon d={ICON.folder} size={14} /> <span className="chiptext">{repo.split('/').pop()}</span>
-                <span className="branch">{swarm.base_branch}</span>
+                <span className="branch">{project.base_branch}</span>
               </a>
             )}
             {bot && <BotRecents bot={bot} onPick={pick} onNew={newChat} />}
-            {swarm && <CrewRecents swarm={swarm} onPick={pick} onNew={newChat} />}
+            {project && <CrewRecents project={project} onPick={pick} onNew={newChat} />}
             <div className="spacer" />
             {bot && (
               <>
@@ -309,8 +310,8 @@ export function BotsShell() {
                 </div>
               </>
             )}
-            {swarm && (
-              <Link className="icon" to={`/swarms/${encodeURIComponent(swarm.slug)}`} title={`Edit ${swarm.name}`} aria-label={`Edit ${swarm.name}`}>
+            {project && (
+              <Link className="icon" to={projectPath(project.slug)} title={`Edit ${project.name}`} aria-label={`Edit ${project.name}`}>
                 <Icon d={ICON.edit} size={16} />
               </Link>
             )}
@@ -322,7 +323,7 @@ export function BotsShell() {
               tab={railTab}
               onTab={(t) => set({ rail: t === 'connections' ? 'connections' : null, conn: null })}
               bots={bots.data}
-              swarms={crews}
+              projects={crews}
               room={room}
               waiting={waiting}
               connection={connId}
@@ -333,8 +334,8 @@ export function BotsShell() {
               <div className="deskrow">
                 {bot ? (
                   <BotChat key={bot.slug} bot={bot} focus={focus} fresh={fresh === roomKey} onSent={() => setFresh(null)} />
-                ) : swarm ? (
-                  <CrewChat key={swarm.slug} swarm={swarm} bots={bots.data ?? []} focus={focus} fresh={fresh === roomKey} onSent={() => setFresh(null)} />
+                ) : project ? (
+                  <CrewChat key={project.slug} project={project} bots={bots.data ?? []} focus={focus} fresh={fresh === roomKey} onSent={() => setFresh(null)} />
                 ) : (
                   <section className="center" aria-label="Bots">
                     {bots.error ? (
@@ -396,7 +397,7 @@ export function BotsShell() {
             </section>
           </main>
 
-          <StatusBar ok={!bots.error} connectors={connections.data?.length} bot={bot} swarm={swarm} />
+          <StatusBar ok={!bots.error} connectors={connections.data?.length} bot={bot} project={project} />
 
           {editing === 'new' && <BotEditor key="new" bot={null} onClose={closeEditor} />}
           {editing === 'edit' && bot && <BotEditor key={bot.id} bot={bot} advanced={tab === 'loop' || params.get('edit') === 'advanced'} onClose={closeEditor} />}
