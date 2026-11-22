@@ -97,6 +97,11 @@ export type Effort = string;
 export type BotModels = { models: BotModel[]; markup_pct: number; /** The effort levels every bot model takes, and the one a new bot starts on. */ efforts?: Effort[]; default_effort?: Effort };
 export type BatchItem = { n: number; label: string; [k: string]: unknown };
 export type Question = { question: string; options: string[]; batch: BatchItem[] | null; answer_with: string | null };
+export type RunLink = { url: string; title: string; kind: string };
+/** An MCP App (`ui://…`) a step's tool result carries: its page (`html`, or read from the server by `uri`) and what it shows. */
+export type RunApp = { step: string; uri: string; title: string; html: string | null; input: unknown; result: unknown };
+/** An MCP App's page as `GET /v1/mcp-apps/resource` answers it (the server's own panels). */
+export type McpResource = { uri: string; mimeType: string; text: string; _meta?: { ui?: { prefersBorder?: boolean } } };
 export type BotRun = {
   id: string;
   bot_slug: string;
@@ -111,6 +116,14 @@ export type BotRun = {
   output_tokens: number;
   cost_micros: number;
   own_key: boolean;
+  /** What happened, in a plain sentence or two (the server's words); empty while it runs. */
+  summary?: string;
+  /** When the task did not fit the bot's loop: what the bot does and what to ask it. */
+  hint?: string;
+  /** Pages the run made or touched (a pull request, a Slack message, a doc, an app). */
+  links?: RunLink[];
+  /** MCP App UI resources its steps' tool results carry, shown inline in the turn. */
+  apps?: RunApp[];
   /** The org's rrotor it ran on; none for Glyphh cloud. */
   runs_on?: string | null;
   /** `project`: in the approvals queue, a project's pull request waiting for merge or reject (`project_slug` its project). */
@@ -258,6 +271,17 @@ export const useBotRun = (id: string | null, every = 2000) =>
 /** Every run of the org waiting on the person (its approvals queue), oldest first; asked for again every 15 seconds. */
 export const useApprovals = (every = 15_000) =>
   useQuery({ queryKey: botKeys.approvals, queryFn: async () => (await api.get<{ runs: BotRun[] }>('/bot-approvals')).runs, refetchInterval: every });
+
+/** An MCP App's page, for a `ui://` resource of the server's own; a page never changes at its address, so it is kept. */
+export const useMcpResource = (uri: string | null) =>
+  useQuery({
+    queryKey: ['mcp-apps', uri ?? ''] as const,
+    enabled: uri !== null,
+    queryFn: () => api.get<McpResource>(`/mcp-apps/resource?uri=${encodeURIComponent(uri!)}`),
+    staleTime: Infinity,
+  });
+/** A connector tool called for an MCP App in the page (its host bridge's `tools/call`), as the person signed in. */
+export const callMcpTool = (name: string, args: unknown) => api.post<Record<string, unknown>>('/mcp-apps/tools/call', { name, arguments: args ?? {} });
 
 export const useBotKey = () => useQuery({ queryKey: botKeys.key, queryFn: () => api.get<BotKey>('/bot-key') });
 
