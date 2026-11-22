@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { botsFake, drawnMascot, inbox, waiting, weekdays } from '@/test/bots';
+import { decision, decisionsFake } from '@/test/botDecisions';
+import { botsFake, drafted, drawnMascot, inbox, waiting, weekdays } from '@/test/bots';
 import { renderApp } from '@/test/render';
-import { server } from '@/test/server';
+import { http, HttpResponse, server } from '@/test/server';
 import { closing, picking, projectRun, projectsFake, siteCrew, turn } from '@/test/projects';
 import { CLOUD_NOTE } from '@/pages/projects/parts';
 import { safeHref, md } from './md';
@@ -153,15 +154,67 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     expect(fake.state.bodies.at(-1)).toEqual({ outcome: 'leave', gate: 'easy', item: '1' });
   });
 
+  it('shows the server’s decisions in the turn once it has them: Right keeps one in Ada, Wrong relabels it', async () => {
+    on({ runs: [decided()] });
+    const fake = decisionsFake({
+      decisions: [decision(), decision({ id: 'd-2', key: 'm2', label: 'Invoice overdue', outcome: 'leave', now: 'leave', who: 'you', confidence: null })],
+    });
+    server.use(...fake.handlers);
+    const { user } = renderApp('/bots/inbox-helper');
+    // The run's own rows first, then the server's (labels from the items, never JSON), in a table of their own.
+    await waitFor(() =>
+      expect(within(screen.getByRole('table', { name: 'Decisions' })).getAllByRole('row').map((r) => r.textContent)).toEqual([
+        'Lunch on Friday?answerAda · 97% sureRightWrong',
+        'Invoice overdueleaveYouRightWrong',
+      ]),
+    );
+    const table = screen.getByRole('table', { name: 'Decisions' });
+    const rows = within(table).getAllByRole('row');
+    // A run that spent tokens says how many, beside its cost.
+    expect(screen.getByRole('article', { name: 'Inbox helper: done' })).toHaveTextContent('1,020 tokens · $0.0042');
+    await user.click(within(rows[1]!).getByRole('button', { name: 'Right: Invoice overdue' }));
+    await waitFor(() => expect(within(table).getAllByRole('row')[1]).toHaveTextContent('Kept'));
+    expect(fake.state.seen).toContain('confirm d-2');
+    await user.click(within(within(table).getAllByRole('row')[0]!).getByRole('button', { name: 'Wrong: Lunch on Friday?' }));
+    await waitFor(() => expect(within(table).getAllByRole('row')[0]).toHaveTextContent('Lunch on Friday?leaveYouAda learned it'));
+    expect(fake.state.bodies.at(-1)).toEqual({ outcome: 'leave' });
+  });
+
+  it('reads a run’s steps readably, raw JSON behind a toggle, and says when no Claude step ran', async () => {
+    const run = { ...decided(), input_tokens: 0, output_tokens: 0, cost_micros: 0 };
+    run.output = 'Line one\\nLine **two**';
+    run.data = {
+      ...run.data,
+      mail: { exports: { $summary: 'Found 2 emails' }, ret: [{ id: 'm1', subject: 'Lunch on Friday?' }, { id: 'm2', subject: 'Invoice overdue', html_url: 'https://mail.test/m2' }] },
+    };
+    on({ runs: [run] });
+    const { user } = renderApp('/bots/inbox-helper');
+    const turn = await screen.findByRole('article', { name: 'Inbox helper: done' });
+    // The output's written-out line breaks are breaks again; no tokens and no agent step: it says so, not $0.00.
+    expect(within(turn).getByText('two').closest('.md')).toHaveTextContent('Line oneLine two');
+    expect(turn).toHaveTextContent('No Claude step ran');
+    await user.click(within(turn).getByRole('button', { name: 'What its steps found' }));
+    const step = within(turn).getByRole('region', { name: 'Step mail' });
+    expect(step).toHaveTextContent('Found 2 emails');
+    expect(within(step).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Lunch on Friday?', 'Invoice overdue']);
+    expect(within(step).getByRole('link', { name: 'Invoice overdue' })).toHaveAttribute('href', 'https://mail.test/m2');
+    expect(within(turn).getByRole('region', { name: 'Step decide' })).toHaveTextContent('2 decided');
+    expect(turn.querySelector('pre.rraw')).toBeNull();
+    await user.click(within(turn).getByRole('button', { name: 'Raw' }));
+    expect(turn.querySelector('pre.rraw')).toHaveTextContent('"$summary": "Found 2 emails"');
+  });
+
   it('opens Decisions, Ada gates and Tools as panels beside the chat from the top bar’s icons, not as tabs', async () => {
     on({ runs: [decided()] });
+    server.use(...decisionsFake({ decisions: [decision(), decision({ id: 'd-2', key: 'm2', label: 'Invoice overdue', outcome: 'leave', now: 'leave', who: 'you' })] }).handlers);
     const { user, router } = renderApp('/bots/inbox-helper');
     const panels = await screen.findByRole('toolbar', { name: 'Panels' });
     expect(within(panels).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Decisions', 'Ada gates', 'Tools']);
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
     await user.click(within(panels).getByRole('button', { name: 'Decisions' }));
     const decisions = await screen.findByRole('region', { name: 'Decisions' });
-    expect(within(within(decisions).getByRole('table', { name: 'Every decision' })).getAllByRole('row')).toHaveLength(3);
+    const every = within(decisions).getByRole('table', { name: 'Every decision' });
+    await waitFor(() => expect(within(every).getAllByRole('row')).toHaveLength(3));
     await user.click(within(panels).getByRole('button', { name: 'Ada gates' }));
     const gates = await screen.findByRole('region', { name: 'Ada gates' });
     expect(await within(gates).findByText('precedents')).toBeInTheDocument();
@@ -181,9 +234,14 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     on();
     renderApp('/bots/inbox-helper?tab=gates');
     expect(await screen.findByRole('region', { name: 'Ada gates' })).toBeInTheDocument();
-    renderApp('/bots/inbox-helper?tab=loop');
-    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
-    expect(within(editor).getByLabelText('The loop as JSON')).toBeVisible();
+    // What used to open the editor's Advanced part opens the one editor there is.
+    for (const old of ['?tab=loop', '?edit=advanced']) {
+      const view = renderApp(`/bots/inbox-helper${old}`);
+      const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+      expect(within(editor).getByLabelText('Instructions')).toBeVisible();
+      expect(editor.querySelector('details')).toBeNull();
+      view.unmount();
+    }
   });
 
   it('lists past runs under Recents, shows one in the chat, and starts a new chat from the empty state', async () => {
@@ -360,89 +418,237 @@ describe('a project’s crew in the Bots area', () => {
 });
 
 describe('the bot editor, a modal as the Glyphh Bot app’s', () => {
-  it('edits a bot: the card with its cat, the fields, its connectors as pills, saved together', async () => {
+  it('edits a bot in plain fields, with nothing of how it works inside: no look pickers, no Advanced, no JSON, no skills', async () => {
     const fake = on();
     const { user, router } = renderApp('/bots/inbox-helper');
     await user.click(await within(await screen.findByRole('banner')).findByRole('button', { name: 'Edit Inbox helper' }));
     const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    // The card: the cat, Shuffle (one of the cats there are) and Describe a new one. Nothing else about the look.
     expect(within(editor).getByRole('button', { name: 'Shuffle the cat' })).toBeInTheDocument();
     expect(within(editor).getByRole('button', { name: 'Describe a new one' })).toBeInTheDocument();
-    for (const label of ['Describe your bot and Claude makes it', 'Name', 'Tagline', 'Instructions', 'Voice', 'Model']) expect(within(editor).getByLabelText(label)).toBeInTheDocument();
+    expect(within(editor).queryByLabelText(/^Look/)).not.toBeInTheDocument();
+    for (const label of ['Tell Claude what to change', 'Name', 'What it is for', 'Instructions', 'Where it runs', 'When it runs', 'Voice', 'Model']) expect(within(editor).getByLabelText(label)).toBeVisible();
+    expect(within(editor).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['Access', 'When it runs', 'Voice and model']);
+    // Nothing is folded away, and none of the words of its insides are said.
+    expect(editor.querySelector('details')).toBeNull();
+    expect(within(editor).queryByText(/Advanced/)).not.toBeInTheDocument();
+    expect(editor.querySelector('textarea.mono')).toBeNull();
+    expect(editor.textContent).not.toMatch(/\bloop|\bgates?\b|\bspec\b|\bskills?\b|JSON|bot\.json/i);
     expect(within(editor).getByRole('button', { name: 'Play the voice' })).toBeDisabled(); // no samples yet
     const name = within(editor).getByLabelText('Name');
     await user.clear(name);
     await user.type(name, 'Mail helper');
-    await user.selectOptions(within(editor).getByLabelText('Look: head'), 'round');
+    await user.clear(within(editor).getByLabelText('What it is for'));
+    await user.type(within(editor).getByLabelText('What it is for'), 'Answers the post.');
+    await user.type(within(editor).getByLabelText('Instructions'), ' Be brief.');
     await waitFor(() => expect(within(within(editor).getByLabelText('Model')).getAllByRole('option').length).toBeGreaterThan(3));
     await user.selectOptions(within(editor).getByLabelText('Model'), 'claude-haiku-5-5');
     await user.selectOptions(within(editor).getByLabelText('Voice'), 'bf_emma');
-    // Its connectors: Gmail is on; Slack turned on gives it Slack's tools.
-    const pills = within(editor).getByRole('group', { name: 'Connectors this bot can use' });
-    expect(await within(pills).findByRole('button', { name: 'Gmail' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(within(pills).getByRole('button', { name: 'Slack' }));
-    await waitFor(() => expect(within(pills).getByRole('button', { name: 'Slack' })).toHaveAttribute('aria-pressed', 'true'));
     await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
     expect(await screen.findByText('Mail helper is saved.')).toBeInTheDocument();
-    expect(fake.state.bodies[0]).toMatchObject({ name: 'Mail helper', model: 'claude-haiku-5-5', voice: 'bf_emma', look: { head: 'round' }, mascot: '', permission_mode: 'ask', runs_on: null });
-    expect(fake.state.bodies[1]).toEqual([
-      { connection_id: 'c-gmail', tools: ['gmail-find-email'] },
-      { connection_id: 'c-slack', tools: ['slack-send-message'] },
-    ]);
+    // How it works inside goes back exactly as it came.
+    expect(fake.state.bodies[0]).toEqual({
+      name: 'Mail helper',
+      summary: 'Answers the post.',
+      instructions: 'Read new emails and answer the easy ones. Be brief.',
+      look: inbox().look,
+      mascot: '',
+      voice: 'bf_emma',
+      model: 'claude-haiku-5-5',
+      permission_mode: 'ask',
+      schedule: expect.objectContaining({ every: 'off' }),
+      runs_on: null,
+      folders: [],
+      spec: inbox().spec,
+      skills: inbox().skills,
+    });
+    expect(fake.state.bodies).toHaveLength(1); // its apps were not touched, so not saved again
     await waitFor(() => expect(router.state.location.pathname).toBe('/bots/mail-helper'));
     expect(screen.queryByRole('dialog', { name: 'Edit Inbox helper' })).not.toBeInTheDocument();
   });
 
-  it('keeps what only the platform has under Advanced: permission mode, where it runs, the schedule, Ada gates, the loop and skills', async () => {
+  it('shuffles among the cats there are', async () => {
+    const fake = on({ bots: [inbox({ mascot: drawnMascot })] });
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    await user.click(within(editor).getByRole('button', { name: 'Shuffle the cat' }));
+    await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
+    await waitFor(() => expect(fake.state.bodies[0]).toMatchObject({ mascot: '', look: { head: expect.any(String), tail: expect.any(String), pose: expect.any(String) } }));
+  });
+
+  it('gives a bot its apps under Access: a row each with a switch, how many tools, and Choose tools', async () => {
     const fake = on();
     const { user } = renderApp('/bots/inbox-helper?edit=1');
     const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
-    const advanced = editor.querySelector('details')!;
-    expect(advanced).not.toHaveAttribute('open');
-    await user.click(within(editor).getByText('Advanced', { exact: true }));
-    const where = within(editor).getByRole('combobox', { name: 'Runs on' });
+    const apps = within(editor).getByRole('list', { name: 'Apps it can use' });
+    await waitFor(() => expect(within(apps).getAllByRole('listitem')).toHaveLength(2));
+    const [gmail, slack] = within(apps).getAllByRole('listitem');
+    // Gmail is on, with one of its three tools; Slack is off.
+    expect(within(gmail!).getByRole('switch', { name: 'Gmail' })).toBeChecked();
+    await waitFor(() => expect(gmail).toHaveTextContent('Gmailchris@example.com1 of 3 toolsChoose tools'));
+    expect(within(slack!).getByRole('switch', { name: 'Slack' })).not.toBeChecked();
+    expect(within(slack!).queryByRole('button', { name: /Choose tools/ })).not.toBeInTheDocument();
+    expect(within(editor).getByRole('link', { name: '+ Connect an app' })).toHaveAttribute('href', '/connections');
+    // Slack switched on gives it Slack's tools.
+    await user.click(within(slack!).getByRole('switch', { name: 'Slack' }));
+    await waitFor(() => expect(slack).toHaveTextContent('1 of 1 tool'));
+    // Choose tools is the tool permissions, for that app.
+    await user.click(within(gmail!).getByRole('button', { name: 'Choose tools: Gmail' }));
+    const tools = await screen.findByRole('dialog', { name: 'Gmail · chris@example.com tools' });
+    const writes = within(tools).getByRole('region', { name: 'Write/delete tools' });
+    await user.click(within(writes).getByRole('button', { name: /Write\/delete tools/ }));
+    await user.click(within(writes).getByRole('switch', { name: 'Send email' }));
+    await user.click(within(tools).getByRole('button', { name: 'Done' }));
+    expect(gmail).toHaveTextContent('2 of 3 tools');
+    await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
+    expect(await screen.findByText('Inbox helper is saved.')).toBeInTheDocument();
+    expect(fake.state.bodies[1]).toEqual([
+      { connection_id: 'c-gmail', tools: ['gmail-find-email', 'gmail-send-email'] },
+      { connection_id: 'c-slack', tools: ['slack-send-message'] },
+    ]);
+  });
+
+  it('gives a bot on a rrotor that machine’s folders, to read or to change, and none on Glyphh cloud', async () => {
+    const fake = on({ bots: [inbox({ runs_on: 'rr-studio', folders: [{ path: '/Users/chris/Desktop', access: 'write' }] })] });
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    const where = within(editor).getByRole('combobox', { name: 'Where it runs' });
     await waitFor(() => expect(within(where).getAllByRole('option')).toHaveLength(3));
     expect(within(where).getByRole('option', { name: 'Acme (offline)' })).toBeDisabled();
-    await user.selectOptions(where, 'rr-studio');
-    await user.selectOptions(within(editor).getByRole('combobox', { name: 'Permission mode' }), 'connection');
+    const folders = within(editor).getByRole('list', { name: 'Folders it can use' });
+    expect(within(folders).getByRole('combobox', { name: 'Access to /Users/chris/Desktop' })).toHaveValue('write');
+    // Add a folder: the machine's own folders, read from the machine, opened one by one.
+    await user.click(within(editor).getByRole('button', { name: '+ Add a folder' }));
+    const picker = await screen.findByRole('dialog', { name: 'Folders on Studio Mac' });
+    expect(await within(picker).findByRole('button', { name: 'Add Desktop' })).toBeDisabled(); // it has it already
+    await user.click(within(picker).getByRole('button', { name: 'Open Documents' }));
+    await user.click(await within(picker).findByRole('button', { name: 'Add Invoices' }));
+    expect(fake.state.seen).toEqual(expect.arrayContaining(['folders ', 'folders /Users/chris/Documents']));
+    expect(screen.queryByRole('dialog', { name: 'Folders on Studio Mac' })).not.toBeInTheDocument();
+    // A new folder is read only until said otherwise; one can be taken off.
+    expect(within(folders).getByRole('combobox', { name: 'Access to /Users/chris/Documents/Invoices' })).toHaveValue('read');
+    await user.selectOptions(within(folders).getByRole('combobox', { name: 'Access to /Users/chris/Documents/Invoices' }), 'Read and change');
+    await user.click(within(folders).getByRole('button', { name: 'Remove /Users/chris/Desktop' }));
+    await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
+    await waitFor(() => expect(fake.state.bodies[0]).toMatchObject({ runs_on: 'rr-studio', folders: [{ path: '/Users/chris/Documents/Invoices', access: 'write' }] }));
+    // On Glyphh cloud there are none to give.
+    const again = renderApp('/bots/inbox-helper?edit=1');
+    const cloud = (await screen.findAllByRole('dialog', { name: 'Edit Inbox helper' })).at(-1)!;
+    await waitFor(() => expect(within(within(cloud).getByRole('combobox', { name: 'Where it runs' })).getAllByRole('option')).toHaveLength(3));
+    await again.user.selectOptions(within(cloud).getByRole('combobox', { name: 'Where it runs' }), '');
+    expect(within(cloud).getByText('Glyphh cloud has no folders. Choose a rrotor to give it files.')).toBeInTheDocument();
+    expect(within(cloud).queryByRole('button', { name: '+ Add a folder' })).not.toBeInTheDocument();
+    await again.user.click(within(cloud).getByRole('button', { name: 'Save bot' }));
+    await waitFor(() => expect(fake.state.bodies.at(-1)).toMatchObject({ runs_on: null, folders: [] }));
+  });
+
+  it('lets a folder’s path be typed when the machine cannot show its folders', async () => {
+    const fake = on({ bots: [inbox({ runs_on: 'rr-acme' })] });
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    await waitFor(() => expect(within(within(editor).getByRole('combobox', { name: 'Where it runs' })).getAllByRole('option')).toHaveLength(3));
+    server.use(http.get('https://rrotor.acme.test/v1/folders', () => HttpResponse.error()));
+    await user.click(within(editor).getByRole('button', { name: '+ Add a folder' }));
+    const picker = await screen.findByRole('dialog', { name: 'Folders on Acme' });
+    expect(await within(picker).findByText(/That machine did not answer/)).toBeInTheDocument();
+    await user.type(within(picker).getByLabelText('Type the folder’s path instead'), '/srv/invoices{Enter}');
+    await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
+    await waitFor(() => expect(fake.state.bodies[0]).toMatchObject({ folders: [{ path: '/srv/invoices', access: 'read' }] }));
+  });
+
+  it('says when it must ask as a choice of three, and when it runs in plain words', async () => {
+    const fake = on();
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    const asks = within(editor).getByRole('radiogroup', { name: 'Before it acts' });
+    expect(within(asks).getAllByRole('radio').map((r) => r.textContent)).toEqual([
+      'Ask me firstIt waits for your yes before every action.',
+      'Follow each app’s settingsIt asks only where an app is set to ask.',
+      'Act on its ownIt does not ask. What you blocked still never happens.',
+    ]);
+    expect(within(asks).getByRole('radio', { name: /Ask me first/ })).toBeChecked();
+    await user.click(within(asks).getByRole('radio', { name: /Follow each app’s settings/ }));
+    expect(within(asks).getByRole('radio', { name: /Follow each app’s settings/ })).toBeChecked();
     // The schedule, in plain words.
-    const runs = within(editor).getByRole('combobox', { name: 'Runs' });
+    const runs = within(editor).getByRole('combobox', { name: 'When it runs' });
     expect(runs).toHaveValue('off');
     expect(within(editor).getByText('It runs only when you run it.')).toBeInTheDocument();
+    expect(within(editor).queryByLabelText('What it looks at each time')).not.toBeInTheDocument();
     await user.selectOptions(runs, 'weekdays');
     await user.selectOptions(within(editor).getByRole('combobox', { name: 'Time zone' }), 'America/Chicago');
     const time = within(editor).getByLabelText('At');
     fireEvent.change(time, { target: { value: '' } }); // a cleared picker keeps its time
     fireEvent.change(time, { target: { value: '07:30' } });
-    await user.type(within(editor).getByLabelText('What each run is given'), 'is:unread');
+    await user.type(within(editor).getByLabelText('What it looks at each time'), 'is:unread');
     expect(within(editor).getByText('Runs on weekdays at 7:30 (America/Chicago time).')).toBeInTheDocument();
-    // Its gates in Ada, and the loop and skills.
-    expect(within(editor).getByRole('list', { name: 'Ada gates' })).toHaveTextContent('easyanswerleave');
-    await user.click(within(editor).getByRole('button', { name: '+ Add skill' }));
-    await user.type(within(editor).getAllByLabelText('Skill name').at(-1)!, 'urgency');
-    await user.type(within(editor).getAllByLabelText('What it says').at(-1)!, 'Urgent means down.');
     await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
     expect(await screen.findByText('Inbox helper is saved.')).toBeInTheDocument();
     expect(fake.state.bodies[0]).toMatchObject({
       permission_mode: 'connection',
-      runs_on: 'rr-studio',
+      runs_on: null,
       schedule: { every: 'weekdays', at: '07:30', timezone: 'America/Chicago', input: 'is:unread' },
-      skills: { tone: 'Write short, warm replies.', urgency: 'Urgent means down.' },
+      spec: inbox().spec,
+      skills: { tone: 'Write short, warm replies.' },
     });
-    expect(fake.state.bodies).toHaveLength(1); // its connectors were not touched, so not saved again
   });
 
-  it('lists the problems the server finds in the loop, and says when the JSON is not JSON', async () => {
-    on({ problems: ['loop[2]: no such tool gmail-send', 'gates.easy: needs options'] });
+  it('changes an existing bot from plain words: Claude is sent the bot as it stands, and what it decides comes back with it', async () => {
+    const changed = drafted({ name: 'Inbox helper', summary: 'Answers the easy emails.', instructions: 'Read new emails, answer the easy ones and flag the angry ones.', look: inbox().look, spec: { ...inbox().spec, gates: { easy: { options: ['answer', 'leave'] }, mood: { outcomes: ['angry', 'calm'] } } }, skills: { tone: 'Write short, warm replies.', mood: 'Angry means capitals.' }, apps: [{ app: 'gmail', tools: ['gmail-find-email'] }] });
+    const fake = on({ maker: [{ reply: 'It now flags the angry ones too.', draft: changed, problems: [], missing_apps: [] }] });
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    expect(within(editor).queryByLabelText('Describe your bot and Claude makes it')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(within(editor).getByLabelText('Model')).getAllByRole('option').length).toBeGreaterThan(3));
+    await waitFor(() => expect(within(within(editor).getByRole('list', { name: 'Apps it can use' })).getAllByRole('listitem')).toHaveLength(2));
+    await user.type(within(editor).getByLabelText('Tell Claude what to change'), 'also flag the angry ones');
+    await user.click(within(editor).getByRole('button', { name: 'Change it' }));
+    expect(await within(editor).findByText('It now flags the angry ones too.')).toBeInTheDocument();
+    expect(fake.state.bodies[0]).toEqual({
+      messages: [{ role: 'user', content: 'also flag the angry ones' }],
+      draft: {
+        name: 'Inbox helper',
+        summary: 'Answers the easy emails.',
+        look: inbox().look,
+        mascot: '',
+        instructions: 'Read new emails and answer the easy ones.',
+        model: 'claude-sonnet-5-5',
+        spec: inbox().spec,
+        skills: inbox().skills,
+        apps: [{ app: 'gmail', tools: ['gmail-find-email'] }],
+        connections: [{ connection_id: 'c-gmail', tools: ['gmail-find-email'] }],
+      },
+    });
+    expect(within(editor).getByLabelText('Instructions')).toHaveValue('Read new emails, answer the easy ones and flag the angry ones.');
+    expect(within(editor).getByText(/Decides: easy \(answer, leave\), mood \(angry, calm\) · learned from your answers/)).toBeInTheDocument();
+    await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
+    expect(await screen.findByText('Inbox helper is saved.')).toBeInTheDocument();
+    expect(fake.state.bodies[1]).toMatchObject({ spec: changed.spec, skills: changed.skills });
+  });
+
+  it('says what a bot decides in one quiet line, with a way to what it has learned; no line when it decides nothing', async () => {
+    on({ bots: [inbox(), inbox({ id: 'b-2', slug: 'quiet', name: 'Quiet', spec: { loop: [{ step: 'work' }] }, gate_models: [] })] });
+    const { user, router } = renderApp('/bots/quiet?edit=1');
+    const quiet = await screen.findByRole('dialog', { name: 'Edit Quiet' });
+    expect(within(quiet).queryByText(/Decides:/)).not.toBeInTheDocument();
+    expect(within(quiet).queryByRole('button', { name: 'See what it has learned' })).not.toBeInTheDocument();
+    await user.click(within(quiet).getByRole('button', { name: 'Close' }));
+    await router.navigate('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    expect(within(editor).getByText(/Decides: easy \(answer, leave\) · learned from your answers/)).toBeInTheDocument();
+    await user.click(within(editor).getByRole('button', { name: 'See what it has learned' }));
+    expect(await screen.findByRole('region', { name: 'Ada gates' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Edit Inbox helper' })).not.toBeInTheDocument();
+  });
+
+  it('says the problems the server finds on save as plain sentences under Save', async () => {
+    on({ problems: ['loop[2]: no such tool gmail-send', 'gates.easy: needs options', 'The schedule needs a time'] });
     const { user } = renderApp('/bots/inbox-helper?edit=advanced');
     const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
-    const spec = within(editor).getByLabelText('The loop as JSON');
-    fireEvent.change(spec, { target: { value: '{ "loop": ' } });
-    expect(within(editor).getByText(/Not JSON yet/)).toBeInTheDocument();
-    expect(within(editor).getByRole('button', { name: 'Save bot' })).toBeDisabled();
-    fireEvent.change(spec, { target: { value: '{ "loop": [{ "step": "fetch" }] }' } });
     await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
     const problems = await within(editor).findByRole('list', { name: 'Problems' });
-    expect(within(problems).getAllByRole('listitem').map((p) => p.textContent)).toEqual(['loop[2]: no such tool gmail-send', 'gates.easy: needs options']);
+    expect(within(problems).getAllByRole('listitem').map((p) => p.textContent)).toEqual(['No such tool gmail-send.', 'Needs options.', 'The schedule needs a time.']);
+    expect(within(editor).getByRole('alert')).toHaveTextContent('It was not saved.');
+    expect(within(editor).getByRole('button', { name: 'Save bot' }).compareDocumentPosition(problems) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('makes a new bot from a description: Claude asks, then drafts it into the fields, and Save makes it', async () => {
@@ -458,8 +664,12 @@ describe('the bot editor, a modal as the Glyphh Bot app’s', () => {
     await user.type(idea, '#support');
     await user.click(within(editor).getByRole('button', { name: 'Make it' }));
     await waitFor(() => expect(within(editor).getByLabelText('Name')).toHaveValue('Support triage'));
-    expect(within(editor).getByLabelText('Tagline')).toHaveValue('Posts the urgent support email to Slack.');
+    expect(within(editor).getByLabelText('What it is for')).toHaveValue('Posts the urgent support email to Slack.');
     expect(fake.state.seen).toEqual(expect.arrayContaining(['draft 1', 'draft 3']));
+    expect(fake.state.bodies[0]).toMatchObject({ draft: null }); // a new bot starts from nothing
+    // What Claude drafted it to decide is said, with nothing learned to see yet.
+    expect(within(editor).getByText(/Decides: urgency · learned from your answers/)).toBeInTheDocument();
+    expect(within(editor).queryByRole('button', { name: 'See what it has learned' })).not.toBeInTheDocument();
     await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/bots/support-triage'));
     expect(fake.state.bodies.at(-1)).toMatchObject({

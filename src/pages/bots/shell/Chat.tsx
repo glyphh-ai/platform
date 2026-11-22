@@ -33,6 +33,9 @@ import {
   type Review,
   type Turn,
 } from '@/api/projects';
+import { unescaped } from '@/bots/decisions/Markdown';
+import { noClaudeStep, RunData } from '@/bots/decisions/RunData';
+import { TurnDecisions } from '@/bots/decisions/TurnDecisions';
 import { ago, dollars, plural, stamp } from '@/lib/format';
 import { connectUrl } from '@/api/github';
 import { useNarration } from '@/pages/projects/narration';
@@ -182,6 +185,7 @@ function BotTurn({ run: listed, bot, place }: { run: BotRun; bot: Bot; place: (i
   const live = useBotRun(working(listed.status) ? listed.id : null);
   const run = live.data?.id === listed.id ? live.data : listed;
   const going = working(run.status);
+  const over = run.status === 'done' || run.status === 'failed';
   const where = place(run.runs_on);
   return (
     <div id={`msg-${run.id}`} className="turnpair">
@@ -207,13 +211,14 @@ function BotTurn({ run: listed, bot, place }: { run: BotRun; bot: Bot; place: (i
             )}
           </div>
           <Steps summary={runSummary(run, bot.spec)} lines={run.log} live={going} />
-          <RunDecisions run={run} bot={bot} />
-          {run.output && <Markdown text={run.output} />}
+          <TurnDecisions slug={bot.slug} runId={run.id} over={over} fallback={<RunDecisions run={run} bot={bot} />} />
+          {run.output && <Markdown text={unescaped(run.output)} />}
+          {!going && <RunData run={run} spec={bot.spec} markdown={(text) => <Markdown text={text} />} />}
           {run.status === 'needs_input' && <Ask run={run} bot={bot} />}
           {run.error && <div className="err">{run.error}</div>}
           {!going && (
             <small className="rmeta" title={stamp(run.created_at)}>
-              {ago(run.created_at)} · {dollars(run.cost_micros)}
+              {ago(run.created_at)} · {noClaudeStep(run, bot.spec) ? 'No Claude step ran' : `${plural(run.input_tokens + run.output_tokens, 'token')} · ${dollars(run.cost_micros)}`}
               {where && ` · on ${where}`}
             </small>
           )}

@@ -76,27 +76,80 @@ button.chip { cursor: pointer; }
 .dact input { width: 130px; height: 24px; padding: 0 8px; font-size: 12px; }
 .drow .err { grid-column: 1 / -1; }
 
-/* The editor: two buttons under the cat, and what only the platform has, folded away. */
+/* What a run's steps found, readable, folded like its steps: each step's answer, the raw JSON behind its own toggle. */
+.rdata.open .rsteps { margin-top: 6px; }
+.rsteps { display: flex; flex-direction: column; gap: 8px; }
+.rstep { padding: 8px 12px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--surface); font-size: 13.5px; color: var(--text-2); }
+.rhead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.rhead b { font: 500 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); }
+.rhead span { font: 400 11px var(--mono); color: var(--text-4); }
+.rsum { margin: 0 0 4px; color: var(--text-2); }
+.rnone { margin: 0; color: var(--text-4); font: 400 12px var(--mono); }
+.rlist { margin: 0; padding-left: 22px; }
+.rlist li { margin: 2px 0; }
+.rlist a { color: var(--text); text-underline-offset: 3px; }
+.rfields { display: grid; gap: 2px; margin: 0; }
+.rfields div { display: grid; grid-template-columns: minmax(80px, 30%) minmax(0, 1fr); gap: 10px; }
+.rfields dt { font: 500 10.5px/1.9 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-4); }
+.rfields dd { margin: 0; overflow-wrap: anywhere; }
+.rstep .bubble.md { padding: 0; border: 0; background: none; }
+.rraw { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--surface); font: 400 11.5px/1.5 var(--mono); color: var(--text-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The editor: the card stays, the fields scroll inside the modal, Save stays in sight under them. */
 .previewbtns { display: flex; justify-content: center; gap: 4px; }
 .previewbtns .btn { padding: 0 8px; font-size: 11.5px; }
 .preview.drawn { position: static; padding: 12px; }
 .two.voice-model { grid-template-columns: 1fr 152px; }
 .form .row .btn { flex: none; }
 .form label small.err::before { content: '! '; }
-.adv { padding-top: 12px; border-top: 1px solid var(--hair); }
-.adv > summary { display: flex; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; font: 500 10.5px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-4); }
-.adv > summary::-webkit-details-marker { display: none; }
-.adv > summary::before { content: '▸'; transition: transform 0.12s; }
-.adv[open] > summary::before { transform: rotate(90deg); }
-.adv > summary small { font: 400 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text-4); }
-.adv > summary:hover { color: #fff; }
-.adv > .form { margin-top: 14px; }
-.form textarea.mono { font: 400 12.5px/1.5 var(--mono); }
-.gatelist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gatelist li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.gatelist b { margin-right: 6px; font: 500 13px var(--mono); }
-.problems { margin: 0; padding-left: 18px; color: #fff; font-size: 13px; }
-.skill { display: flex; flex-direction: column; gap: 6px; }
+.modal:has(> .botedit) { display: flex; flex-direction: column; overflow: hidden; }
+.modal > .botedit { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.editside { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.editside > .form { flex: 1; min-height: 0; overflow-y: auto; padding-right: 10px; margin-right: -10px; }
+.editside > .form > * { flex: none; }
+.editfoot { flex: none; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--hair); }
+.editfoot .row.end { margin-top: 0; }
+.editfoot .err { margin-top: 10px; }
+.form h3 { color: #fff; }
+.form a.link { align-self: flex-start; }
+.decides { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 12px; font-size: 12.5px; color: var(--text-4); }
+.problems { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--rail); border-radius: var(--radius); color: var(--text-3); font-size: 13px; line-height: 1.5; }
+.problems b { color: #fff; }
+.problems ul { margin: 6px 0 0; padding-left: 18px; color: #fff; }
+
+/* Access: each app or folder a row; when it must ask, three cards. */
+.approws { list-style: none; margin: 0; padding: 0; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); }
+.approws > li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border-bottom: 1px solid var(--hair); }
+.approws > li:last-child { border-bottom: 0; }
+.approws > li.dim { font-size: 12.5px; }
+.appname { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.appname b { font: 500 14px var(--sans); color: var(--text-3); }
+.approw.on .appname b { color: #fff; }
+.appname small { font-size: 11.5px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appcount { font: 500 11px var(--mono); color: var(--text-4); white-space: nowrap; }
+.approw select { flex: none; width: 150px; height: 28px; font-size: 12.5px; }
+.sw { flex: none; width: 34px; height: 20px; padding: 2px; border: 1px solid var(--rail); border-radius: 999px; background: transparent; display: flex; transition: background 0.12s, border-color 0.12s; }
+.sw i { width: 14px; height: 14px; border-radius: 50%; background: var(--text-4); transition: transform 0.12s, background 0.12s; }
+.sw[aria-checked='true'] { background: #fff; border-color: #fff; }
+.sw[aria-checked='true'] i { transform: translateX(14px); background: #000; }
+.folderpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px var(--mono); color: #fff; }
+.folderlist { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); }
+.folderlist li { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--hair); }
+.folderlist li:last-child { border-bottom: 0; }
+.folderlist li.dim { padding: 10px 12px; font-size: 12.5px; }
+.folderopen { flex: 1; min-width: 0; height: 30px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 13.5px var(--sans); color: var(--text); }
+.folderopen::before { content: '▸ '; color: var(--text-4); }
+.folderopen:hover { text-decoration: underline; text-underline-offset: 3px; }
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mode { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; text-align: left; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); transition: border-color 0.12s; }
+.mode:hover { border-color: var(--rail); }
+.mode b { display: flex; align-items: center; gap: 8px; font: 600 13px var(--sans); color: var(--text-3); }
+.mode b::before { content: ''; flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--rail); }
+.mode small { font-size: 12px; line-height: 1.4; color: var(--text-4); }
+.mode.on { border-color: #fff; background: var(--surface-2); }
+.mode.on b { color: #fff; }
+.mode.on b::before { border-color: #fff; background: radial-gradient(circle, #fff 0 3px, transparent 4px); }
+.toolnote { margin: 12px 0 0; font-size: 12.5px; }
 .modal > p { margin: 0 0 14px; }
 
 /* A phone: the rail is a drawer, the chat is the whole screen, a panel covers it. */
@@ -125,6 +178,10 @@ button.chip { cursor: pointer; }
   .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 24px); padding: 16px; }
   .botedit { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .preview { position: static; }
+  .modal:has(> .botedit) { display: block; overflow-y: auto; }
+  .editside > .form { overflow: visible; padding-right: 0; margin-right: 0; }
+  .modes { grid-template-columns: minmax(0, 1fr); }
+  .approws > li { flex-wrap: wrap; }
   .two, .two.voice-model { grid-template-columns: minmax(0, 1fr); }
   .looks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drow, .dtable.wide .drow { grid-template-columns: minmax(0, 1fr) auto; }

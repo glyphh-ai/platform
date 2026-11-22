@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useApprovals, useBotPlaces, useBotRuns, useBots, useConnections, type Bot, type Connection } from '@/api/bots';
 import { useMe } from '@/api/queries';
 import { useProjectRuns, useProjects, type Project } from '@/api/projects';
+import { DecisionsPanel } from '@/bots/decisions/DecisionsPanel';
 import { useShellNav } from '@/layout/AppShell/AppShell';
 import { ago } from '@/lib/format';
 import { ToolsPanel } from '@/pages/connections/ToolsPanel';
@@ -16,7 +17,6 @@ import { botPath } from '../parts';
 import { ToolsTab } from '../ToolsTab';
 import { BotCat, ShellContext, useEscape, type PanelId, type ShellApi } from './bits';
 import { BotChat, CrewChat, MODES } from './Chat';
-import { DecisionsPanel } from './Decisions';
 import { BotEditor } from './Editor';
 import { Icon, ICON, Reactor } from './icons';
 import { ConnectorIcon, Rail, type RailTab } from './Rail';
@@ -388,8 +388,8 @@ export function BotsShell() {
                   <div className="panels">
                     {bot &&
                       shownPanels.map((p) => (
-                        <Panel key={p.id} icon={<Icon d={p.icon} size={13} />} title={p.label} onClose={() => togglePanel(p.id)} plain={p.id !== 'decisions'}>
-                          {p.id === 'decisions' && <DecisionsPanel bot={bot} />}
+                        <Panel key={p.id} icon={<Icon d={p.icon} size={13} />} title={p.label} onClose={() => togglePanel(p.id)} plain>
+                          {p.id === 'decisions' && <DecisionsPanel key={bot.slug} slug={bot.slug} />}
                           {p.id === 'gates' && <GatesTab bot={bot} />}
                           {p.id === 'tools' && <ToolsTab key={bot.updated_at} bot={bot} />}
                         </Panel>

@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { Bot, BotDraft, BotKey, BotModels, BotRun, BotVoices, Connection, ConnectionTool, ConnectorApp, DraftReply, GateStat, Permission, Place, Said, Schedule } from '@/api/bots';
 import type { BotTemplate } from '@/api/botTemplates';
 import { summary } from '@/pages/bots/schedule';
+import { decisionsFake } from './botDecisions';
 import { apiError } from './server';
 
 /**
@@ -194,9 +195,18 @@ export const botVoices: BotVoices = {
 /** Where the org's bots can run: Glyphh cloud, a computer linked right now and a self-hosted rrotor offline. */
 export const places = (): Place[] => [
   { id: null, name: 'Glyphh cloud', mode: 'cloud', linked: true },
-  { id: 'rr-studio', name: 'Studio Mac', mode: 'local', linked: true },
-  { id: 'rr-acme', name: 'Acme', mode: 'self', linked: false },
+  { id: 'rr-studio', name: 'Studio Mac', mode: 'local', linked: true, url: studioUrl },
+  { id: 'rr-acme', name: 'Acme', mode: 'self', linked: false, url: 'https://rrotor.acme.test' },
 ];
+
+/** The Studio Mac's rrotor, at its own address: the browser asks it for its folders (`GET /v1/folders?under=`). */
+export const studioUrl = 'https://studio-mac.rrotor.test';
+const home = '/Users/chris';
+const studioFolders: Record<string, string[]> = {
+  '': ['Desktop', 'Documents', 'Downloads'],
+  [`${home}/Documents`]: ['Invoices', 'Contracts'],
+};
+export const machineFolders = (under: string) => (studioFolders[under] ?? []).map((name) => ({ name, path: `${under || home}/${name}` }));
 
 /** A schedule as the server keeps one. */
 export const weekdays = (given: Partial<Schedule> = {}): Schedule => ({
@@ -291,6 +301,11 @@ export function botsFake({
     http.get(v1('/bots/models'), () => HttpResponse.json(botModels)),
     http.get(v1('/bots/voices'), () => HttpResponse.json(botVoices)),
     http.get(v1('/bots/places'), () => HttpResponse.json({ places: places() })),
+    http.get(`${studioUrl}/v1/folders`, ({ request }) => {
+      const under = new URL(request.url).searchParams.get('under') ?? '';
+      state.seen.push(`folders ${under}`);
+      return HttpResponse.json({ folders: machineFolders(under) });
+    }),
     http.post(v1('/bots/draft'), async ({ request }) => {
       const body = (await request.json()) as { messages: Said[]; draft: BotDraft | null };
       state.bodies.push(body);
@@ -536,6 +551,8 @@ export function botsFake({
       state.seen.push(`permissions ${c.id}`);
       return HttpResponse.json(c);
     }),
+    // None of its decisions copied yet, unless a test gives its own (decisionsFake, used after).
+    ...decisionsFake().handlers,
   ];
   return { state, handlers };
 }
