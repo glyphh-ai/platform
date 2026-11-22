@@ -58,16 +58,27 @@ export type Bot = {
   next_run?: string;
   /** The org's rrotor it runs on; none for Glyphh cloud. */
   runs_on?: string | null;
+  /** The folders on that rrotor it may read or change; none on Glyphh cloud. */
+  folders?: BotFolder[];
   created_at: string;
   updated_at: string;
   last_run: { id: string; status: RunStatus; created_at: string } | null;
 };
+/** A folder on the bot's rrotor: `read` to read it only, `write` to read and change it. */
+export type BotFolder = { path: string; access: 'read' | 'write' };
 /** How often a bot runs on its own: off, every hour, every day, weekdays, one day each week or one day each month. */
 export type Every = 'off' | 'hour' | 'day' | 'weekdays' | 'week' | 'month';
 /** A bot's schedule as the person chooses it, never cron: `at` is HH:MM in `timezone`; `weekday` 0 is Monday. */
 export type Schedule = { every: Every; at: string; weekday: number; day: number; timezone: string; input: string };
 /** Where a bot can run: Glyphh cloud (`id` null) or one of the org's rrotors, linked to Glyphh right now or not. */
-export type Place = { id: string | null; name: string; mode: 'cloud' | 'local' | 'self'; linked: boolean };
+export type Place = {
+  id: string | null;
+  name: string;
+  mode: 'cloud' | 'local' | 'self';
+  linked: boolean;
+  /** A rrotor's own address, which the browser asks for that machine's folders (api/rrotorFolders.ts). */
+  url?: string | null;
+};
 export type BotModel = {
   id: string;
   name: string;
@@ -154,6 +165,7 @@ export type NewBot = {
   connections?: BotScope[];
   schedule?: Schedule;
   runs_on?: string | null;
+  folders?: BotFolder[];
 };
 export type BotChange = Partial<Omit<NewBot, 'connections'>>;
 export type BotVoice = { id: string; name: string; accent: string; gender: string; default: boolean };
