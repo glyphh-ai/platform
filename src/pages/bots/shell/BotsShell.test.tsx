@@ -721,7 +721,7 @@ describe('the bot editor, a modal as the Glyphh Bot app’s', () => {
 
   it('gives a bot its apps as on/off pills; which tools an app allows is the connection’s own, in the rail', async () => {
     const fake = on();
-    const { user, router } = renderApp('/bots/inbox-helper?edit=1');
+    const { user } = renderApp('/bots/inbox-helper?edit=1');
     const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
     const apps = within(editor).getByRole('group', { name: 'Apps it can use' });
     await waitFor(() => expect(within(apps).getAllByRole('button').map((b) => [b.lastChild!.textContent, b.getAttribute('aria-pressed')])).toEqual([['Gmail', 'true'], ['Slack', 'false'], ['+ Connect an app', null]]));
@@ -732,12 +732,17 @@ describe('the bot editor, a modal as the Glyphh Bot app’s', () => {
     await user.click(within(editor).getByRole('button', { name: 'Save bot' }));
     expect(await screen.findByText('Inbox helper is saved.')).toBeInTheDocument();
     expect(fake.state.bodies[1]).toEqual([{ connection_id: 'c-slack', tools: ['slack-send-message'] }]);
-    // "+ Connect an app" is the rail's catalog, the one place apps are connected.
-    await router.navigate('/bots/inbox-helper?edit=1');
-    const again = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
-    await user.click(await within(again).findByRole('button', { name: '+ Connect an app' }));
+  });
+
+  it('connects another app from the editor in the rail’s catalog, the one place apps are connected', async () => {
+    on();
+    const { user, router } = renderApp('/bots/inbox-helper?edit=1');
+    const editor = await screen.findByRole('dialog', { name: 'Edit Inbox helper' });
+    await user.click(await within(editor).findByRole('button', { name: '+ Connect an app' }));
     expect(await screen.findByRole('dialog', { name: 'Add connectors' })).toBeInTheDocument();
-    expect(router.state.location.search).toContain('rail=connections');
+    await waitFor(() => expect(router.state.location.search).toContain('rail=connections'));
+    // The editor is still there under it, with what was typed.
+    expect(screen.getByRole('dialog', { name: 'Edit Inbox helper' })).toBeInTheDocument();
   });
 
   it('gives a bot on a rrotor the folders that machine shares, to read or to change, and none on Glyphh cloud', async () => {
