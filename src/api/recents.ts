@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
 /**
@@ -29,7 +29,7 @@ export type Recent = {
   created_at: string;
 };
 export type Recents = { recents: Recent[]; next_cursor: string | null; needs_you: number; archived_count: number };
-export type RecentsQuery = { q?: string; waiting?: boolean; archived?: boolean; limit?: number };
+export type RecentsQuery = { q?: string; waiting?: boolean; archived?: boolean; limit?: number; cursor?: string };
 
 export const recentKeys = {
   all: ['recents'] as const,
@@ -42,9 +42,23 @@ const search = (query: RecentsQuery) => {
   if (query.waiting) p.set('waiting', '1');
   if (query.archived) p.set('archived', '1');
   if (query.limit) p.set('limit', String(query.limit));
+  if (query.cursor) p.set('cursor', query.cursor);
   const s = p.toString();
   return s ? `?${s}` : '';
 };
+
+/** How many rows a page of the dropdown holds; the next is asked for by the cursor the one before gave. */
+export const RECENTS_PAGE = 30;
+
+/** The dropdown's list, a page at a time: each page after the first by the cursor of the one before. */
+export const useRecentsPaged = (query: Omit<RecentsQuery, 'cursor' | 'limit'> = {}, every = 15_000) =>
+  useInfiniteQuery({
+    queryKey: [...recentKeys.list(query), 'paged'] as const,
+    initialPageParam: '',
+    queryFn: ({ pageParam }) => api.get<Recents>(`/recents${search({ ...query, limit: RECENTS_PAGE, cursor: pageParam || undefined })}`),
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    refetchInterval: every,
+  });
 
 /** A read of the list, asked for again every 15 seconds so a run that starts to wait shows without a reload. */
 export const useRecents = (query: RecentsQuery = {}, { enabled = true, every = 15_000 }: { enabled?: boolean; every?: number } = {}) =>

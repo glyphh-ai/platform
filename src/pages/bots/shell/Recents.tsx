@@ -4,7 +4,7 @@
 // Archived at the foot. The "Needs you" chip opens the same list, only the runs that wait.
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Bot } from '@/api/bots';
-import { useArchiveRecent, useDeleteRecent, usePinRecent, useRecents, type Recent } from '@/api/recents';
+import { useArchiveRecent, useDeleteRecent, usePinRecent, useRecentsPaged, type Recent } from '@/api/recents';
 import { BotCat, Modal, useEscape } from './bits';
 import { Icon, ICON } from './icons';
 
@@ -119,8 +119,9 @@ function Panel({ bots, waiting, focus, onPick, onNew, onClose }: { bots: Bot[]; 
     const t = setTimeout(() => setQ(words.trim()), 200);
     return () => clearTimeout(t);
   }, [words]);
-  const list = useRecents({ q: q || undefined, waiting: waiting || undefined, archived: archived || undefined, limit: 100 });
-  const rows = list.data?.recents ?? [];
+  // A page at a time: "Show more" asks for the next by the cursor the last one gave.
+  const list = useRecentsPaged({ q: q || undefined, waiting: waiting || undefined, archived: archived || undefined });
+  const rows = (list.data?.pages ?? []).flatMap((p) => p.recents);
   const groups: Section[] = archived ? (rows.length ? [{ key: 'archived', title: 'Archived', rows }] : []) : sections(rows);
   const pick = (r: Recent) => {
     onClose();
@@ -169,10 +170,15 @@ function Panel({ bots, waiting, focus, onPick, onNew, onClose }: { bots: Bot[]; 
         ) : (
           <p className="dim pad">{q ? 'Nothing matches.' : archived ? 'Nothing archived.' : waiting ? 'Nothing waits on you.' : 'No chats yet. Every task you give shows up here.'}</p>
         )}
+        {list.hasNextPage && (
+          <button type="button" className="btn wide rmorepage" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+            {list.isFetchingNextPage ? 'Reading…' : 'Show more'}
+          </button>
+        )}
       </div>
       {!archived && !waiting && (
         <button type="button" className="rarch" onClick={() => setArchived(true)}>
-          Archived <span className="dim">{list.data?.archived_count ?? 0}</span>
+          Archived <span className="dim">{list.data?.pages[0]?.archived_count ?? 0}</span>
         </button>
       )}
       {deleting && (

@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { decision, decisionsFake } from '@/test/botDecisions';
-import { botsFake, drafted, drawnMascot, inbox, waiting, weekdays } from '@/test/bots';
+import { botsFake, drafted, drawnMascot, gmail, inbox, slack, waiting, weekdays } from '@/test/bots';
 import { renderApp } from '@/test/render';
 import { http, HttpResponse, server } from '@/test/server';
 import { closing, crewFake, picking, projectRun, siteCrew, turn } from '@/test/projects';
@@ -349,13 +349,41 @@ describe('CONNECTIONS in the rail, the one place for them', () => {
     const { user } = renderApp('/bots');
     await user.click(await screen.findByRole('tab', { name: 'Connections' }));
     const side = await rail();
-    const gmail = await within(side).findByRole('button', { name: /Gmail/ });
-    expect(gmail).toHaveTextContent('GmailOn');
+    const gmailRow = await within(side).findByRole('button', { name: /Gmail/ });
+    // The server says nothing yet of how a connection stands, so the row claims nothing: no ON.
+    expect(gmailRow.textContent).toBe('GGmail');
+    expect(gmailRow.querySelector('.dot')).toBeNull();
     expect(within(side).getByRole('button', { name: /Slack/ })).toBeInTheDocument();
     expect(side.textContent).not.toMatch(/Claude|key/i);
     expect(within(side).queryByRole('link', { name: /Add connectors/ })).not.toBeInTheDocument(); // it opens here, it does not leave
     await user.click(within(side).getByRole('button', { name: 'refresh' }));
     await waitFor(() => expect(fake.state.seen.some((s) => s.startsWith('sync'))).toBe(true));
+  });
+
+  it('says how a connection stands only when the server does: ON, SIGN IN or FAILED', async () => {
+    on({ connections: [{ ...gmail(), status: 'ok' }, { ...slack(), status: 'sign_in' }, { ...gmail(), id: 'c-hub', app: 'hubspot', app_name: 'HubSpot', status: 'failed' }, { ...gmail(), id: 'c-notion', app: 'notion', app_name: 'Notion' }] });
+    renderApp('/bots?rail=connections');
+    const side = await rail();
+    await within(side).findByRole('button', { name: /Gmail/ });
+    expect(Array.from(side.querySelectorAll('button.conn')).map((b) => [b.querySelector('b')!.textContent, b.querySelector('small')?.textContent ?? null])).toEqual([
+      ['Gmail', 'On'],
+      ['Slack', 'Sign in'],
+      ['HubSpot', 'Failed'],
+      ['Notion', null],
+    ]);
+  });
+
+  it('pages Recents by the server’s cursor: Show more reads the next page', async () => {
+    const many = Array.from({ length: 34 }, (_, i) => waiting({ id: `r-${i}`, status: 'done', input: `Task ${i}`, question: null, created_at: new Date(Date.parse('2026-11-20T09:00:00Z') - i * 60_000).toISOString() }));
+    const fake = on({ runs: many }, { projects: [] });
+    const { user } = renderApp('/bots/inbox-helper');
+    await user.click(await screen.findByRole('button', { name: /^Recents/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Recents' });
+    await waitFor(() => expect(panel.querySelectorAll('.rtitle')).toHaveLength(30));
+    await user.click(within(panel).getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(panel.querySelectorAll('.rtitle')).toHaveLength(34));
+    expect(fake.crew.state.seen.some((s) => s.includes('cursor=30'))).toBe(true);
+    expect(within(panel).queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
   });
 
   it('opens one modal for a connection: its account, its tools’ permissions, Disconnect', async () => {

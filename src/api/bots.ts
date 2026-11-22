@@ -17,6 +17,8 @@ export type Connection = {
   account_id: string;
   label: string | null;
   permissions: Record<string, Permission>;
+  /** How the connection stands, once the server says: `ok` (it works), `sign_in` (the person must sign in again) or `failed`. Not sent yet. */
+  status?: 'ok' | 'sign_in' | 'failed';
   created_at: string;
 };
 export type ConnectorApp = { slug: string; name: string; description: string | null; icon: string | null };

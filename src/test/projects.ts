@@ -336,14 +336,22 @@ export function crewFake({ projects = [siteCrew()], runs = [], github = acme(), 
       const q = new URL(request.url).searchParams;
       const words = (q.get('q') ?? '').toLowerCase();
       const all = recents();
-      const shown = all
+      const found = all
         .filter((r) => (q.get('archived') ? r.archived : !r.archived))
         .filter((r) => !q.get('waiting') || r.waiting)
         .filter((r) => !q.get('pinned') || r.pinned)
-        .filter((r) => !words || `${r.title} ${r.bot_name} ${r.workspace ?? ''}`.toLowerCase().includes(words))
-        .slice(0, Number(q.get('limit') ?? 30));
+        .filter((r) => !words || `${r.title} ${r.bot_name} ${r.workspace ?? ''}`.toLowerCase().includes(words));
+      // A page by its cursor: here, how many rows came before it.
+      const from = Number(q.get('cursor') ?? 0);
+      const limit = Number(q.get('limit') ?? 30);
+      const shown = found.slice(from, from + limit);
       state.seen.push(`recents ${q.toString()}`);
-      return HttpResponse.json({ recents: shown, next_cursor: null, needs_you: all.filter((r) => r.waiting).length, archived_count: all.filter((r) => r.archived).length });
+      return HttpResponse.json({
+        recents: shown,
+        next_cursor: from + limit < found.length ? String(from + limit) : null,
+        needs_you: all.filter((r) => r.waiting).length,
+        archived_count: all.filter((r) => r.archived).length,
+      });
     }),
     flag(state.pinned, true, 'pin'),
     flag(state.pinned, false, 'unpin'),

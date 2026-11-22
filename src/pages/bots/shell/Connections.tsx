@@ -31,12 +31,15 @@ export function ConnectorIcon({ name, icon, size = 20 }: { name: string; icon: s
   );
 }
 
-/** How a connection stands, as its row says it: ON, or SIGN IN / FAILED when the server says it needs the person. */
-function stateOf(c: Connection): { words: string; dot: string } {
-  const status = (c as Connection & { status?: string }).status;
-  if (status === 'failed') return { words: 'Failed', dot: 'bad' };
-  if (status === 'sign_in' || status === 'expired') return { words: 'Sign in', dot: 'warn' };
-  return { words: 'On', dot: 'ok' };
+/**
+ * How a connection stands, as its row says it: ON, SIGN IN or FAILED, and only when the server says so. Until it
+ * sends a status the row claims nothing: a connection that is listed is not known to work.
+ */
+function stateOf(c: Connection): { words: string; dot: string } | null {
+  if (c.status === 'ok') return { words: 'On', dot: 'ok' };
+  if (c.status === 'sign_in') return { words: 'Sign in', dot: 'warn' };
+  if (c.status === 'failed') return { words: 'Failed', dot: 'bad' };
+  return null;
 }
 
 /** The one modal for a connection: its account, its tools' permissions, Disconnect. */
@@ -322,8 +325,8 @@ export function Connections({ onOpen, onCatalog }: Pick<Props, 'onOpen' | 'onCat
           <button key={c.id} type="button" className="conn" title={`${c.app_name}${c.label ? ` · ${c.label}` : ''}`} onClick={() => onOpen(c.id)}>
             <ConnectorIcon name={c.app_name} icon={c.app_icon} />
             <b>{c.app_name}</b>
-            <span className={`dot ${state.dot}`} />
-            <small>{state.words}</small>
+            {state && <span className={`dot ${state.dot}`} />}
+            {state && <small>{state.words}</small>}
           </button>
         );
       })}

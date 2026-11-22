@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useAddBotTemplate, useBotTemplate, type BotTemplate } from '@/api/botTemplates';
 import { useConnections } from '@/api/bots';
 import { Cat } from '@/bots/cat/Cat';
+import { topic } from '@/bots/decisions/words';
+import { plural } from '@/lib/format';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
 import { List, Row } from '@/components/List';
 import { Button, Card, Chip, EmptyState, Icon, LoadingCard, panelId, tabId, Tabs, useToast } from '@/ui';
@@ -74,19 +76,19 @@ function Overview({ template }: { template: BotTemplate }) {
         </div>
         <Needs template={template} />
       </Card>
-      <Card aria-labelledby="gates">
+      <Card aria-labelledby="decides">
         <div className={styles.sectionHead}>
-          <h2 id="gates" className={styles.sectionTitle}>
-            What it learns
+          <h2 id="decides" className={styles.sectionTitle}>
+            What it decides
           </h2>
-          <p className={styles.sectionAbout}>Each gate is an Ada model of your own: it asks you until it has learned your answers.</p>
+          <p className={styles.sectionAbout}>Each is learned in an Ada model of your own: it asks you until it has learned your answers.</p>
         </div>
         {template.gates.length === 0 ? (
-          <p className={styles.sectionAbout}>It has no gates.</p>
+          <p className={styles.sectionAbout}>It decides nothing on its own.</p>
         ) : (
-          <List label="Its gates">
+          <List label="What it decides">
             {template.gates.map((g) => (
-              <Row key={g} title={<span className={styles.mono}>{g}</span>} />
+              <Row key={g} title={topic(g)} />
             ))}
           </List>
         )}
@@ -171,8 +173,7 @@ function Details({ template }: { template: BotTemplate }) {
             <Fact label="Runs on">{template.model}</Fact>
             <Fact label="Connections">{template.required_apps.map((a) => a.name).join(', ') || 'None'}</Fact>
             <Fact label="Tools">{template.tools.length}</Fact>
-            <Fact label="Gates">{template.gates.length}</Fact>
-            <Fact label="Skills">{Object.keys(template.skills).length}</Fact>
+            <Fact label="Decides">{plural(template.gates.length, 'thing')}</Fact>
           </dl>
           <p className={styles.note}>Added, it is a copy of your org’s own: change it, teach it, run it. This template stays as it is.</p>
         </Card>
