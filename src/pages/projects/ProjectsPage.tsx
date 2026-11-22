@@ -1,23 +1,19 @@
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useBotPlaces, type Place } from '@/api/bots';
 import { useProjects, type Project } from '@/api/projects';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
 import { cx } from '@/lib/cx';
-import { crewChatPath, Face, placeName, projectPath, repoName, reviewWords, turnWords, useFaces, type Faces } from './parts';
+import { crewChatPath, Face, placeName, repoName, reviewWords, turnWords, useFaces, type Faces } from './parts';
 import { ProjectDialog } from './ProjectDialog';
-import { ProjectView } from './ProjectView';
 import styles from './projects.module.css';
 
 /** A project in the list: its name, repo and base, the crew's cats, where it runs, who picks the next bot and how it is reviewed. */
 function ProjectCard({ project: p, faces, places }: { project: Project; faces: Faces; places: Place[] | undefined }) {
   const title = `project-${p.slug}`;
   return (
-    <li className={styles.cardWrap}>
-      {/* Beside the card, not in it: a link cannot hold a link. */}
-      <Link to={crewChatPath(p.slug)} className={styles.chatLink} aria-label={`Open ${p.name}’s crew chat`}>
-        Open chat
-      </Link>
-      <Link to={projectPath(p.slug)} className={styles.card} aria-labelledby={title}>
+    <li>
+      {/* A project opens as its crew's chat in the Bots area. */}
+      <Link to={crewChatPath(p.slug)} className={styles.card} aria-labelledby={title}>
         <div className={styles.cardTop}>
           <span className={styles.minis} aria-hidden="true">
             {p.members.map((m) => (
@@ -93,19 +89,7 @@ export function ProjectsPage() {
           ))}
         </ul>
       )}
-      <ProjectDialog open={making} onClose={() => setParams({}, { replace: true })} onMade={(p) => navigate(projectPath(p.slug))} />
-    </div>
-  );
-}
-
-/** One project as a page: the view at the page's height, the shown run in the address (`?run=`). */
-export function ProjectPage() {
-  const { name: slug = '' } = useParams();
-  const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  return (
-    <div className={styles.page}>
-      <ProjectView key={slug} slug={slug} run={params.get('run')} onRun={(id) => setParams({ run: id }, { replace: true })} onDeleted={() => navigate('/projects')} />
+      <ProjectDialog open={making} onClose={() => setParams({}, { replace: true })} onMade={(p) => navigate(crewChatPath(p.slug))} />
     </div>
   );
 }

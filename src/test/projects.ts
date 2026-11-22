@@ -1,11 +1,13 @@
 import { http, HttpResponse } from 'msw';
 import type { BotRun } from '@/api/bots';
-import type { GitHubKey, NewProject, Project, ProjectRun, Turn } from '@/api/projects';
+import type { GitHubInstallation, GitHubRepo } from '@/api/github';
+import type { NewProject, Project, ProjectRun, Turn } from '@/api/projects';
 import { apiError } from './server';
 
 /**
- * Projects as the server answers them (/v1/projects, /v1/project-runs, /v1/github-key, and their pull requests in
- * /v1/bot-approvals beside the bots' runs), held in state. A run starts with its first turn out (working, or being
+ * Projects as the server answers them (/v1/projects, /v1/project-runs, the person's GitHub App installation and its
+ * repos at /v1/github, and their pull requests in /v1/bot-approvals beside the bots' runs), held in state. A project
+ * is made or pointed at a repo only through the person's installation, and only at a repo it covers. A run starts with its first turn out (working, or being
  * picked by the orchestrator); the next read of it finds the turn's pull request open, waiting for the person (review
  * each_turn); merged or rejected, the next bot's turn opens one; after the last the run is done. With review `end` a
  * run that waits with no open turn waits on its own pull request of it all.
@@ -13,6 +15,18 @@ import { apiError } from './server';
 const v1 = (path: string) => `*/api/v1${path}`;
 const at = '2026-11-21T10:00:00Z';
 const REPO = 'https://github.com/acme/site';
+
+/** GitHub's install page for the App, as the server's link leads to it; and the installation's own page. */
+export const CONNECT_URL = 'https://api.glyphh.test/v1/github/install?link=signed';
+export const MANAGE_URL = 'https://github.com/settings/installations/4242';
+export const repos: GitHubRepo[] = [
+  { full_name: 'acme/site', url: REPO, private: false, default_branch: 'main' },
+  { full_name: 'acme/docs', url: 'https://github.com/acme/docs', private: true, default_branch: 'trunk' },
+  { full_name: 'acme/api', url: 'https://github.com/acme/api', private: true, default_branch: 'main' },
+];
+/** The person's installation of the App: the account it is on and the repos it covers. */
+export type Connection = { login: string; repos: GitHubRepo[] };
+export const acme = (): Connection => ({ login: 'acme', repos: structuredClone(repos) });
 
 export const crew = [
   { id: 'b-inbox', slug: 'inbox-helper', name: 'Inbox helper' },
@@ -24,6 +38,7 @@ export const siteCrew = (given: Partial<Project> = {}): Project => ({
   slug: 'site-crew',
   name: 'Site crew',
   repo_url: REPO,
+  github_login: 'acme',
   base_branch: 'main',
   members: crew,
   instructions: 'Keep the site small and fast.',
@@ -143,7 +158,10 @@ export const asked = (run: ProjectRun): BotRun | null => {
 type Options = {
   projects?: Project[];
   runs?: ProjectRun[];
-  key?: GitHubKey;
+  /** The person's installation of the Glyphh GitHub App; null: they have not connected GitHub. */
+  github?: Connection | null;
+  /** The person signs in with GitHub; off, the App cannot be installed for them (403 github_not_linked). */
+  linked?: boolean;
   /** The server's own Claude key, which a cloud project runs on; off, a cloud run is refused (503 anthropic_off). */
   anthropic?: boolean;
   /** The org's rrotors that are offline: a run on one is refused (409 rrotor_offline). */
@@ -154,13 +172,31 @@ type Options = {
 export function projectsFake({
   projects = [siteCrew()],
   runs = [],
-  key = { set: true, hint: 'x9Qz', login: 'acme-bot', set_at: at },
+  github = acme(),
+  linked = true,
   anthropic = true,
   offline = ['rr-acme'],
   botRuns = () => [],
 }: Options = {}) {
-  const state = { projects: structuredClone(projects), runs: structuredClone(runs), key: { ...key }, seen: [] as string[], bodies: [] as unknown[], reads: new Map<string, number>() };
+  const state = {
+    projects: structuredClone(projects),
+    runs: structuredClone(runs),
+    github: github as Connection | null,
+    seen: [] as string[],
+    bodies: [] as unknown[],
+    reads: new Map<string, number>(),
+  };
   let next = 1;
+  const notConnected = () =>
+    apiError(404, 'E_NOT_FOUND', 'Install Glyphh’s GitHub App on your GitHub account first.', { reason: 'github_app_missing', connect_url: CONNECT_URL });
+  /** Why the person's installation cannot serve that repo, as the server refuses it; nothing when it can. */
+  const refused = (repo: string) => {
+    if (!state.github) return notConnected();
+    if (state.github.repos.some((r) => r.url === repo)) return null;
+    const words = `Glyphh’s GitHub App is not on ${repo.replace('https://github.com/', '')}: add the repo on GitHub.`;
+    return apiError(404, 'E_NOT_FOUND', words, { reason: 'github_repo', connect_url: CONNECT_URL, manage_url: MANAGE_URL });
+  };
+  const installation = (c: Connection): GitHubInstallation => ({ installation_id: 4242, account_login: c.login, created_at: at, removed_at: null, manage_url: MANAGE_URL });
   const find = (slug: unknown) => state.projects.find((p) => p.slug === slug);
   const run = (id: unknown) => state.runs.find((r) => r.id === id);
   const missing = () => apiError(404, 'E_NOT_FOUND', 'There is no such project.');
@@ -175,7 +211,9 @@ export function projectsFake({
       state.bodies.push(body);
       const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       if (find(slug)) return apiError(409, 'E_CONFLICT', `The org already has a project '${slug}': name it another way.`);
-      const made = siteCrew({ ...body, runs_on: body.runs_on ?? null, id: `p-${next++}`, slug, members: members(body.members) });
+      const no = refused(body.repo_url);
+      if (no) return no;
+      const made = siteCrew({ ...body, runs_on: body.runs_on ?? null, id: `p-${next++}`, slug, members: members(body.members), github_login: state.github!.login });
       state.projects.push(made);
       state.seen.push(`create ${slug}`);
       return HttpResponse.json(made, { status: 201 });
@@ -186,6 +224,10 @@ export function projectsFake({
       if (!p) return missing();
       const change = (await request.json()) as Partial<NewProject>;
       state.bodies.push(change);
+      // A repo given connects the project through the caller's installation.
+      const no = change.repo_url === undefined ? null : refused(change.repo_url);
+      if (no) return no;
+      if (change.repo_url !== undefined) p.github_login = state.github!.login;
       Object.assign(p, change, change.members ? { members: members(change.members) } : {}, { updated_at: new Date(Date.parse(at) + next++ * 1000).toISOString() });
       state.seen.push(`update ${params.slug}`);
       return HttpResponse.json(p);
@@ -199,7 +241,7 @@ export function projectsFake({
     http.post(v1('/projects/:slug/runs'), async ({ params, request }) => {
       const p = find(params.slug);
       if (!p) return missing();
-      if (!state.key.set) return apiError(404, 'E_NOT_FOUND', 'Save the org’s GitHub token first.', { reason: 'github_key' });
+      if (p.github_login === null) return notConnected();
       if (live(p)) return apiError(409, 'E_CONFLICT', 'The project has a run going: answer its pull request, or cancel it, first.');
       if (p.runs_on && offline.includes(p.runs_on)) return apiError(409, 'E_CONFLICT', 'Its rrotor is offline: start it, or choose another place.', { reason: 'rrotor_offline' });
       if (!p.runs_on && !anthropic) return apiError(503, 'E_UNAVAILABLE', 'Glyphh cloud cannot run projects right now.', { reason: 'anthropic_off' });
@@ -267,19 +309,15 @@ export function projectsFake({
     http.get(v1('/bot-approvals'), () =>
       HttpResponse.json({ runs: [...botRuns().filter((r) => r.status === 'needs_input'), ...state.runs.map(asked).filter((r): r is BotRun => r !== null)] }),
     ),
-    http.get(v1('/github-key'), () => HttpResponse.json(state.key)),
-    http.put(v1('/github-key'), async ({ request }) => {
-      const { token } = (await request.json()) as { token: string };
-      if (token.endsWith('bad')) return apiError(422, 'E_INVALID', 'GitHub does not take that token.', { reason: 'token' });
-      state.key = { set: true, hint: token.slice(-4), login: 'acme-bot', set_at: at };
-      state.seen.push('github key');
-      return HttpResponse.json(state.key);
+    http.get(v1('/github/installations'), () => HttpResponse.json(state.github ? [installation(state.github)] : [])),
+    http.post(v1('/github/install'), () => {
+      if (!linked) return apiError(403, 'E_FORBIDDEN', 'Link GitHub to your Glyphh account first, then install the App.', { reason: 'github_not_linked' });
+      state.seen.push('install link');
+      return HttpResponse.json({ url: CONNECT_URL });
     }),
-    http.delete(v1('/github-key'), () => {
-      state.key = { set: false, hint: '', login: '', set_at: null };
-      state.seen.push('github key removed');
-      return HttpResponse.json(state.key);
-    }),
+    http.get(v1('/github/repos'), () =>
+      state.github ? HttpResponse.json({ account_login: state.github.login, manage_url: MANAGE_URL, repos: state.github.repos }) : notConnected(),
+    ),
   ];
   return { state, handlers };
 }

@@ -9,7 +9,8 @@ import { useProjectRuns, useProjects, type Project } from '@/api/projects';
 import { useShellNav } from '@/layout/AppShell/AppShell';
 import { ago } from '@/lib/format';
 import { ToolsPanel } from '@/pages/connections/ToolsPanel';
-import { projectPath } from '@/pages/projects/parts';
+import { GitHubMark } from '@/pages/projects/GitHub';
+import { ProjectDialog } from '@/pages/projects/ProjectDialog';
 import { GatesTab } from '../GatesTab';
 import { botPath } from '../parts';
 import { ToolsTab } from '../ToolsTab';
@@ -176,6 +177,8 @@ export function BotsShell() {
   const [toast, setToast] = useState('');
   const [fresh, setFresh] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(false);
+  // The project's settings (its repo and GitHub connection, its crew, its caps), a modal over the chat.
+  const [settings, setSettings] = useState(false);
 
   // The room: the bot in the address, the crew in ?crew=, else the first project's crew, else the first bot.
   const settled = !bots.isPending && !projects.isPending;
@@ -285,6 +288,16 @@ export function BotsShell() {
                 <span className="branch">{project.base_branch}</span>
               </a>
             )}
+            {project &&
+              (project.github_login ? (
+                <button type="button" className="chip" title="The GitHub account this project works through: change it in the project’s settings" onClick={() => setSettings(true)}>
+                  <GitHubMark /> <span className="chiptext">{project.github_login}</span>
+                </button>
+              ) : (
+                <button type="button" className="chip on" title="This project is not connected to GitHub yet" onClick={() => setSettings(true)}>
+                  <GitHubMark /> Connect GitHub
+                </button>
+              ))}
             {bot && <BotRecents bot={bot} onPick={pick} onNew={newChat} />}
             {project && <CrewRecents project={project} onPick={pick} onNew={newChat} />}
             <div className="spacer" />
@@ -311,9 +324,9 @@ export function BotsShell() {
               </>
             )}
             {project && (
-              <Link className="icon" to={projectPath(project.slug)} title={`Edit ${project.name}`} aria-label={`Edit ${project.name}`}>
+              <button type="button" className="icon" title={`Edit ${project.name}`} aria-label={`Edit ${project.name}`} onClick={() => setSettings(true)}>
                 <Icon d={ICON.edit} size={16} />
-              </Link>
+              </button>
             )}
           </header>
 
@@ -408,6 +421,18 @@ export function BotsShell() {
           )}
         </div>
       </div>
+      {/* Beside the shell, not in it: the modal keeps the projects' own look. */}
+      {project && (
+        <ProjectDialog
+          open={settings}
+          project={project}
+          onClose={() => setSettings(false)}
+          onDeleted={() => {
+            setSettings(false);
+            navigate('/projects');
+          }}
+        />
+      )}
     </ShellContext.Provider>
   );
 }

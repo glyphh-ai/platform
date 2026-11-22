@@ -34,6 +34,8 @@ import {
   type Turn,
 } from '@/api/projects';
 import { ago, dollars, plural, stamp } from '@/lib/format';
+import { connectUrl } from '@/api/github';
+import { useNarration } from '@/pages/projects/narration';
 import { CLOUD_NOTE, endedWords } from '@/pages/projects/parts';
 import { EVERY, scheduleOf } from '../schedule';
 import { botTag, BotCat, RUN_WORDS, runSummary, shortModel, useShell } from './bits';
@@ -589,7 +591,9 @@ export function CrewChat({ project, bots, focus, fresh, onSent }: { project: Pro
   const { scroller, onScroll } = useFollow(runs.data, focus);
   const members = project.members.map((m) => ({ m, bot: bots.find((b) => b.slug === m.slug) }));
   const failed = start.error ?? update.error;
+  const reconnect = connectUrl(failed);
   const cloud = project.runs_on === null;
+  useNarration(project.narrate, latest);
   // Who picks the next bot, as one choice: wait your turn, or an orchestrator (Claude, or one of the crew's bots).
   const ORCH = 'orchestrator:';
   const turnMode = project.turn_mode === 'wait' ? 'wait' : `${ORCH}${project.orchestrator ?? ''}`;
@@ -610,6 +614,14 @@ export function CrewChat({ project, bots, focus, fresh, onSent }: { project: Pro
         failed || cloud ? (
           <>
             {failed && <span className="err">{failed.message}</span>}
+            {reconnect && (
+              <>
+                {' '}
+                <a href={reconnect} target="_blank" rel="noreferrer">
+                  Connect GitHub
+                </a>
+              </>
+            )}
             {failed && cloud && <br />}
             {cloud && CLOUD_NOTE}
           </>
@@ -632,6 +644,7 @@ export function CrewChat({ project, bots, focus, fresh, onSent }: { project: Pro
       />
       <SelectChip
         title="Turn mode"
+        wide
         busy={update.isPending}
         value={turnMode}
         options={[
@@ -642,6 +655,16 @@ export function CrewChat({ project, bots, focus, fresh, onSent }: { project: Pro
         onPick={(v) => update.mutate(v === 'wait' ? { turn_mode: 'wait', orchestrator: null } : { turn_mode: 'orchestrator', orchestrator: v.slice(ORCH.length) || null })}
       />
       <SelectChip title="Pull requests" busy={update.isPending} value={project.review} options={REVIEWS} onPick={(review) => update.mutate({ review })} />
+      <button
+        type="button"
+        className={`ctl ${project.narrate ? 'on' : ''}`}
+        aria-pressed={project.narrate}
+        disabled={update.isPending}
+        title="Reads each new turn aloud while this chat is open. Off, and whenever the chat is closed, runs are silent."
+        onClick={() => update.mutate({ narrate: !project.narrate })}
+      >
+        <i className="led" /> Narrate when watched
+      </button>
     </Composer>
   );
 

@@ -180,9 +180,6 @@ export function SettingsLayout() {
             <NavItem to="/settings/claude-key" icon="key">
               Claude key
             </NavItem>
-            <NavItem to="/settings/github-token" icon="github">
-              GitHub token
-            </NavItem>
           </NavGroup>
           <NavGroup label="Personal">
             <NavItem to="/settings/profile" icon="user">

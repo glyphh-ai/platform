@@ -1,7 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useBots, type BotRun, type Place } from '@/api/bots';
-import { useAnswerProjectRun, type ChangedFile, type Project, type ProjectMember, type ProjectRun, type Review, type TurnMode } from '@/api/projects';
+import { useAnswerProjectRun, type ChangedFile, type Project, type ProjectRun, type Review, type TurnMode } from '@/api/projects';
 import { Cat } from '@/bots/cat/Cat';
 import type { Look } from '@/bots/cat/look';
 import { mascotSrc } from '@/bots/cat/mascots';
@@ -10,8 +10,9 @@ import { ago, stamp } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import styles from './projects.module.css';
 
-export const projectPath = (slug: string) => `/projects/${encodeURIComponent(slug)}`;
-export const projectRunPath = (slug: string, id: string) => `${projectPath(slug)}?run=${encodeURIComponent(id)}`;
+/** A project is its crew's chat in the Bots area (the shell's own `crewPath`, said here so this folder stands alone). */
+export const crewChatPath = (slug: string) => `/bots?crew=${encodeURIComponent(slug)}`;
+export const projectRunPath = (slug: string, id: string) => `${crewChatPath(slug)}&run=${encodeURIComponent(id)}`;
 export const repoName = (url: string) => url.replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '');
 
 /** What Glyphh cloud cannot do, said wherever it is chosen. */
@@ -27,9 +28,6 @@ export const REVIEWS: ReadonlyArray<{ value: Review; label: string; hint: string
   { value: 'end', label: 'At the end', hint: 'At the end: turns merge into the run’s own branch; one pull request of it all waits for you at the end.' },
 ];
 export const NO_ROUNDS = "There are no rounds. It runs until the crew or the orchestrator says it's done";
-
-/** The project's crew in the Bots area's chat (the shell's own `crewPath`, said here so this folder stands alone). */
-export const crewChatPath = (slug: string) => `/bots?crew=${encodeURIComponent(slug)}`;
 
 /** Why a run ended, in words; nothing while it has not. */
 export const endedWords = (run: Pick<ProjectRun, 'ended' | 'max_turns'>) =>
@@ -65,108 +63,6 @@ export function Face({ id, faces, size, busy, mode }: FaceProps) {
   const face = id ? faces.get(id) : undefined;
   if (face?.mascot) return <img src={mascotSrc(face.mascot)} width={size} height={size} alt="" />;
   return <Cat look={face?.look} size={size} busy={busy} mode={mode} />;
-}
-
-/** The crew strip, as the Glyphh Bot app's: a pill holding the crew's cats and names. A set: no numbers, no arrows. */
-export function CrewStrip({ members, faces, up, children }: { members: ProjectMember[]; faces: Faces; up?: string | null; children?: ReactNode }) {
-  return (
-    <div className={styles.queue}>
-      <ul className={styles.seats} aria-label="Crew">
-        {members.map((m) => (
-          <li key={m.id} className={cx(styles.seat, up === m.id && styles.seatUp)}>
-            <Face id={m.id} faces={faces} size={26} busy={up === m.id} />
-            <span>{m.name}</span>
-          </li>
-        ))}
-        {members.length === 0 && <li className={styles.seat}>No bots in the crew</li>}
-      </ul>
-      {children && <span className={styles.stageInfo}>{children}</span>}
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ a pill that opens a small menu
-
-export type PillOption<T> = { value: T; label: string; hint?: string; disabled?: boolean };
-type PillMenuProps<T> = {
-  /** What the pill sets, e.g. "Runs on". */
-  label: string;
-  /** The chosen option in the pill's own words. */
-  shown: string;
-  value: T;
-  options: ReadonlyArray<PillOption<T>>;
-  onPick: (value: T) => void;
-  /** Opens above the pill (the composer's sit at the bottom of the page). */
-  up?: boolean;
-  /** Opens from the pill's right edge. */
-  end?: boolean;
-  busy?: boolean;
-};
-
-/** A small pill, as the Glyphh Bot composer's controls, that opens a menu of choices; choosing one closes it. */
-export function PillMenu<T>({ label, shown, value, options, onPick, up, end, busy }: PillMenuProps<T>) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const id = useId();
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-  return (
-    <div className={styles.pillRoot} ref={root}>
-      <button
-        type="button"
-        className={cx(styles.ctl, styles.ctlSel, open && styles.ctlOpen)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        aria-label={`${label}: ${shown}`}
-        aria-busy={busy || undefined}
-        onClick={() => setOpen(!open)}
-      >
-        <span className={styles.ctlKey}>{label}</span>
-        <span className={styles.ctlValue}>{shown}</span>
-        <span className={styles.caret} aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div role="menu" id={id} aria-label={label} className={cx(styles.menu, up && styles.menuUp, end && styles.menuEnd)}>
-          {options.map((o) => (
-            <button
-              key={String(o.value)}
-              type="button"
-              role="menuitemradio"
-              aria-checked={o.value === value}
-              disabled={o.disabled}
-              className={styles.menuItem}
-              onClick={() => {
-                setOpen(false);
-                if (o.value !== value) onPick(o.value);
-              }}
-            >
-              <span className={styles.menuDot} aria-hidden="true" />
-              <span className={styles.menuText}>
-                <b>{o.label}</b>
-                {o.hint && <small>{o.hint}</small>}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------ a small modal

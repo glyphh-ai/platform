@@ -41,6 +41,13 @@ img.cat-svg.mascot { object-fit: contain; }
 .rmeta { color: var(--text-4); font: 400 11px var(--mono); }
 .cnote { margin: 8px 2px 0; color: var(--text-4); font: 400 12px var(--sans); }
 .composer.hero .cnote { text-align: center; }
+.cnote a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+/* A pill whose words are shown whole (the turn mode: "Orchestrator: <a bot's name>"), and the pills wrap for it. */
+.ctl.sel.wide span:not(.dim) { max-width: none; }
+.controls { flex-wrap: wrap; }
+button.ctl { cursor: pointer; }
+button.ctl:disabled { cursor: default; }
+button.chip { cursor: pointer; }
 .row.wrap { flex-wrap: wrap; }
 .pr-files span { font: 11.5px var(--mono); color: var(--text-3); padding: 3px 6px; }
 .prbody { padding-bottom: 8px; }

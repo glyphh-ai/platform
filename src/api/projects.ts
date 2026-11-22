@@ -3,8 +3,8 @@ import { botKeys } from './bots';
 import { api } from './client';
 
 /**
- * The org's projects (the server's /v1/projects, /v1/project-runs and /v1/github-key): a crew of its bots working on
- * one GitHub repo, from the repo's instructions file and the project's own brief. The crew is a set: who goes next is
+ * The org's projects (the server's /v1/projects and /v1/project-runs): a crew of its bots working on one GitHub repo
+ * (through the Glyphh GitHub App: api/github.ts), from the repo's instructions file and the project's own brief. The crew is a set: who goes next is
  * the next free bot with something to do (`wait`), or whoever the orchestrator names (`orchestrator`). A run goes on
  * until the crew or the orchestrator says it is done; `max_turns` and `max_spend_cents` are its safety caps. Each turn
  * is a pull request: with review `each_turn` it waits for a merge or a reject, with `end` the turns merge into the
@@ -19,6 +19,8 @@ export type Project = {
   slug: string;
   name: string;
   repo_url: string;
+  /** The GitHub account whose installation of the Glyphh App the project works through; none: not connected yet. */
+  github_login: string | null;
   base_branch: string;
   /** A set: it has no order. */
   members: ProjectMember[];
@@ -113,14 +115,12 @@ export type ProjectRun = {
   created_at: string;
   finished_at: string | null;
 };
-export type GitHubKey = { set: boolean; hint: string; login: string; set_at: string | null };
 
 export const projectKeys = {
   projects: ['projects'] as const,
   project: (slug: string) => ['projects', slug] as const,
   runs: (slug: string) => ['projects', slug, 'runs'] as const,
   run: (id: string) => ['project-runs', id] as const,
-  github: ['github-key'] as const,
 };
 
 const one = (slug: string) => `/projects/${encodeURIComponent(slug)}`;
@@ -149,8 +149,6 @@ export const useProjectRun = (id: string | null, every = 3000) =>
     queryFn: () => api.get<ProjectRun>(runPath(id!)),
     refetchInterval: (query) => (runGoing(query.state.data?.status) ? every : false),
   });
-/** The org's GitHub token: what turns clone, commit and open pull requests with, on a rrotor and on Glyphh cloud. */
-export const useGitHubKey = () => useQuery({ queryKey: projectKeys.github, queryFn: () => api.get<GitHubKey>('/github-key') });
 
 // Writes
 
@@ -173,6 +171,3 @@ const afterRun = [projectKeys.projects, ['project-runs'], botKeys.approvals] as 
 export const useAnswerProjectRun = () =>
   useWrite(({ id, answer }: { id: string; answer: 'merge' | 'reject' }) => api.post<ProjectRun>(`${runPath(id)}/answer`, { answer }), afterRun);
 export const useCancelProjectRun = () => useWrite((id: string) => api.post<ProjectRun>(`${runPath(id)}/cancel`), afterRun);
-
-export const useSetGitHubKey = () => useWrite((token: string) => api.put<GitHubKey>('/github-key', { token }), [projectKeys.github]);
-export const useRemoveGitHubKey = () => useWrite(() => api.delete<GitHubKey>('/github-key'), [projectKeys.github]);

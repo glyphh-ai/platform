@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useBotPlaces, useBots } from '@/api/bots';
-import { useCreateProject, useDeleteProject, useGitHubKey, useUpdateProject, type NewProject, type Project, type Review, type TurnMode } from '@/api/projects';
+import { connectUrl } from '@/api/github';
+import { useCreateProject, useDeleteProject, useUpdateProject, type NewProject, type Project, type ProjectChange, type Review, type TurnMode } from '@/api/projects';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cx } from '@/lib/cx';
+import { GitHubRepoField } from './GitHub';
 import { CLOUD_NOTE, Face, Modal, NO_ROUNDS, REVIEWS, TURN_MODES, useFaces } from './parts';
 import styles from './projects.module.css';
 
@@ -42,8 +44,8 @@ type Props = {
 };
 
 /**
- * A new project, or a project's settings, as one small modal: its name and repo, the crew (cats clicked in and out, a
- * set with no order), the brief, where it runs, who picks the next bot and how it is reviewed. Under Advanced: the
+ * A new project, or a project's settings, as one small modal: its name, its repo (picked from the repos the Glyphh
+ * GitHub App is on, once the person has connected GitHub), the crew (cats clicked in and out, a set with no order), the brief, where it runs, who picks the next bot and how it is reviewed. Under Advanced: the
  * base branch, the instructions file and the safety caps.
  */
 export function ProjectDialog({ open, onClose, project, onMade, onDeleted }: Props) {
@@ -57,7 +59,6 @@ export function ProjectDialog({ open, onClose, project, onMade, onDeleted }: Pro
 function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
   const bots = useBots();
   const places = useBotPlaces();
-  const github = useGitHubKey();
   const faces = useFaces();
   const create = useCreateProject();
   const update = useUpdateProject(project?.slug ?? '');
@@ -72,6 +73,8 @@ function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
   const [review, setReview] = useState<Review>(project?.review ?? 'each_turn');
   const [advanced, setAdvanced] = useState(false);
   const [base, setBase] = useState(project?.base_branch ?? 'main');
+  // The base branch follows the picked repo's own until the person types one.
+  const [baseTyped, setBaseTyped] = useState(Boolean(project));
   const [path, setPath] = useState(project?.instructions_path ?? 'PROJECT.md');
   const [turns, setTurns] = useState(String(project?.max_turns ?? 30));
   const [spend, setSpend] = useState(project?.max_spend_cents == null ? '' : (project.max_spend_cents / 100).toFixed(2));
@@ -104,12 +107,19 @@ function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
     max_turns: maxTurns,
     max_spend_cents: cents,
   });
+  // A project's repo is sent only when it changed or was never connected: sending it connects the project as this person.
+  const change = (): ProjectChange => {
+    const { repo_url, ...rest } = body();
+    return project && project.github_login !== null && repo_url === project.repo_url ? rest : { ...rest, repo_url };
+  };
   const save = () => {
-    if (project) update.mutate(body(), { onSuccess: onClose });
+    if (project) update.mutate(change(), { onSuccess: onClose });
     else create.mutate(body(), { onSuccess: (p) => onMade?.(p) });
   };
   const saving = create.isPending || update.isPending;
   const file = path.trim() || 'PROJECT.md';
+  const failed = create.error ?? update.error;
+  const reconnect = connectUrl(failed);
 
   return (
     <div className={styles.form}>
@@ -117,10 +127,14 @@ function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
         Name
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Site crew" maxLength={80} />
       </label>
-      <label>
-        GitHub repo
-        <input className={styles.monoInput} value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="https://github.com/acme/site" spellCheck={false} />
-      </label>
+      <GitHubRepoField
+        value={repo}
+        account={project?.github_login}
+        onPick={(r) => {
+          setRepo(r.url);
+          if (!baseTyped) setBase(r.default_branch);
+        }}
+      />
 
       <Group label="Crew">
         {all.length === 0 && bots.data ? (
@@ -198,7 +212,15 @@ function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
         <div className={styles.two}>
           <label>
             Base branch
-            <input className={styles.monoInput} value={base} onChange={(e) => setBase(e.target.value)} spellCheck={false} />
+            <input
+              className={styles.monoInput}
+              value={base}
+              onChange={(e) => {
+                setBase(e.target.value);
+                setBaseTyped(true);
+              }}
+              spellCheck={false}
+            />
             <small>Turns start from it and merge into it.</small>
           </label>
           <label>
@@ -219,12 +241,16 @@ function Form({ project, onClose, onMade, onDeleted }: Omit<Props, 'open'>) {
         </div>
       )}
 
-      {github.data && !github.data.set && (
-        <small className={styles.plain}>
-          Turns commit and open pull requests with your org’s GitHub token: <Link to="/settings/github-token">set it</Link> before the first run.
-        </small>
-      )}
-      <ApiErrorNotice error={create.error ?? update.error} />
+      <ApiErrorNotice
+        error={failed}
+        action={
+          reconnect ? (
+            <a href={reconnect} target="_blank" rel="noreferrer">
+              Connect GitHub
+            </a>
+          ) : undefined
+        }
+      />
 
       <div className={styles.modalActions}>
         {project && (

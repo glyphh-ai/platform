@@ -9,6 +9,7 @@ export function SelectChip<T extends string>({
   title,
   warn,
   busy,
+  wide,
 }: {
   value: T;
   options: ReadonlyArray<{ value: T; label: string; disabled?: boolean }>;
@@ -17,10 +18,12 @@ export function SelectChip<T extends string>({
   title: string;
   warn?: boolean;
   busy?: boolean;
+  /** Its words are shown whole, however long (Orchestrator: a bot's name). */
+  wide?: boolean;
 }) {
   const cur = options.find((o) => o.value === value) ?? options[0];
   return (
-    <label className={`ctl sel ${warn ? 'warn' : ''}`} title={title}>
+    <label className={`ctl sel ${warn ? 'warn' : ''} ${wide ? 'wide' : ''}`} title={title}>
       <span>{cur?.label ?? value}</span>
       <span className="dim">▾</span>
       <select aria-label={title} value={value} disabled={busy} onChange={(e) => onPick(e.target.value as T)}>
