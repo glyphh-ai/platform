@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { decision, decisionsFake } from '@/test/botDecisions';
 import { botsFake, drawnMascot, inbox, waiting, weekdays } from '@/test/bots';
 import { renderApp } from '@/test/render';
 import { server } from '@/test/server';
@@ -150,15 +151,67 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     expect(fake.state.bodies.at(-1)).toEqual({ outcome: 'leave', gate: 'easy', item: '1' });
   });
 
+  it('shows the server’s decisions in the turn once it has them: Right keeps one in Ada, Wrong relabels it', async () => {
+    on({ runs: [decided()] });
+    const fake = decisionsFake({
+      decisions: [decision(), decision({ id: 'd-2', key: 'm2', label: 'Invoice overdue', outcome: 'leave', now: 'leave', who: 'you', confidence: null })],
+    });
+    server.use(...fake.handlers);
+    const { user } = renderApp('/bots/inbox-helper');
+    // The run's own rows first, then the server's (labels from the items, never JSON), in a table of their own.
+    await waitFor(() =>
+      expect(within(screen.getByRole('table', { name: 'Decisions' })).getAllByRole('row').map((r) => r.textContent)).toEqual([
+        'Lunch on Friday?answerAda · 97% sureRightWrong',
+        'Invoice overdueleaveYouRightWrong',
+      ]),
+    );
+    const table = screen.getByRole('table', { name: 'Decisions' });
+    const rows = within(table).getAllByRole('row');
+    // A run that spent tokens says how many, beside its cost.
+    expect(screen.getByRole('article', { name: 'Inbox helper: done' })).toHaveTextContent('1,020 tokens · $0.0042');
+    await user.click(within(rows[1]!).getByRole('button', { name: 'Right: Invoice overdue' }));
+    await waitFor(() => expect(within(table).getAllByRole('row')[1]).toHaveTextContent('Kept'));
+    expect(fake.state.seen).toContain('confirm d-2');
+    await user.click(within(within(table).getAllByRole('row')[0]!).getByRole('button', { name: 'Wrong: Lunch on Friday?' }));
+    await waitFor(() => expect(within(table).getAllByRole('row')[0]).toHaveTextContent('Lunch on Friday?leaveYouAda learned it'));
+    expect(fake.state.bodies.at(-1)).toEqual({ outcome: 'leave' });
+  });
+
+  it('reads a run’s steps readably, raw JSON behind a toggle, and says when no Claude step ran', async () => {
+    const run = { ...decided(), input_tokens: 0, output_tokens: 0, cost_micros: 0 };
+    run.output = 'Line one\\nLine **two**';
+    run.data = {
+      ...run.data,
+      mail: { exports: { $summary: 'Found 2 emails' }, ret: [{ id: 'm1', subject: 'Lunch on Friday?' }, { id: 'm2', subject: 'Invoice overdue', html_url: 'https://mail.test/m2' }] },
+    };
+    on({ runs: [run] });
+    const { user } = renderApp('/bots/inbox-helper');
+    const turn = await screen.findByRole('article', { name: 'Inbox helper: done' });
+    // The output's written-out line breaks are breaks again; no tokens and no agent step: it says so, not $0.00.
+    expect(within(turn).getByText('two').closest('.md')).toHaveTextContent('Line oneLine two');
+    expect(turn).toHaveTextContent('No Claude step ran');
+    await user.click(within(turn).getByRole('button', { name: 'What its steps found' }));
+    const step = within(turn).getByRole('region', { name: 'Step mail' });
+    expect(step).toHaveTextContent('Found 2 emails');
+    expect(within(step).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Lunch on Friday?', 'Invoice overdue']);
+    expect(within(step).getByRole('link', { name: 'Invoice overdue' })).toHaveAttribute('href', 'https://mail.test/m2');
+    expect(within(turn).getByRole('region', { name: 'Step decide' })).toHaveTextContent('2 decided');
+    expect(turn.querySelector('pre.rraw')).toBeNull();
+    await user.click(within(turn).getByRole('button', { name: 'Raw' }));
+    expect(turn.querySelector('pre.rraw')).toHaveTextContent('"$summary": "Found 2 emails"');
+  });
+
   it('opens Decisions, Ada gates and Tools as panels beside the chat from the top bar’s icons, not as tabs', async () => {
     on({ runs: [decided()] });
+    server.use(...decisionsFake({ decisions: [decision(), decision({ id: 'd-2', key: 'm2', label: 'Invoice overdue', outcome: 'leave', now: 'leave', who: 'you' })] }).handlers);
     const { user, router } = renderApp('/bots/inbox-helper');
     const panels = await screen.findByRole('toolbar', { name: 'Panels' });
     expect(within(panels).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Decisions', 'Ada gates', 'Tools']);
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
     await user.click(within(panels).getByRole('button', { name: 'Decisions' }));
     const decisions = await screen.findByRole('region', { name: 'Decisions' });
-    expect(within(within(decisions).getByRole('table', { name: 'Every decision' })).getAllByRole('row')).toHaveLength(3);
+    const every = within(decisions).getByRole('table', { name: 'Every decision' });
+    await waitFor(() => expect(within(every).getAllByRole('row')).toHaveLength(3));
     await user.click(within(panels).getByRole('button', { name: 'Ada gates' }));
     const gates = await screen.findByRole('region', { name: 'Ada gates' });
     expect(await within(gates).findByText('precedents')).toBeInTheDocument();

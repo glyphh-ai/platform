@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { Bot, BotDraft, BotKey, BotModels, BotRun, BotVoices, Connection, ConnectionTool, ConnectorApp, DraftReply, GateStat, Permission, Place, Said, Schedule } from '@/api/bots';
 import type { BotTemplate } from '@/api/botTemplates';
 import { summary } from '@/pages/bots/schedule';
+import { decisionsFake } from './botDecisions';
 import { apiError } from './server';
 
 /**
@@ -536,6 +537,8 @@ export function botsFake({
       state.seen.push(`permissions ${c.id}`);
       return HttpResponse.json(c);
     }),
+    // None of its decisions copied yet, unless a test gives its own (decisionsFake, used after).
+    ...decisionsFake().handlers,
   ];
   return { state, handlers };
 }
