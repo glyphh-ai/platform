@@ -1,23 +1,24 @@
 import { http, HttpResponse } from 'msw';
 import type { BotRun } from '@/api/bots';
-import type { GitHubInstallation, GitHubRepo } from '@/api/github';
-import type { NewProject, Project, ProjectRun, Turn } from '@/api/projects';
+import type { GitHubRepo } from '@/api/github';
+import type { CrewSet, Project, ProjectRun, RunStart, Turn } from '@/api/projects';
+import type { Recent } from '@/api/recents';
 import { apiError } from './server';
 
 /**
- * Projects as the server answers them (/v1/projects, /v1/project-runs, the person's GitHub App installation and its
- * repos at /v1/github, and their pull requests in /v1/bot-approvals beside the bots' runs), held in state. A project
- * is made or pointed at a repo only through the person's installation, and only at a repo it covers. A run starts with its first turn out (working, or being
- * picked by the orchestrator); the next read of it finds the turn's pull request open, waiting for the person (review
- * each_turn); merged or rejected, the next bot's turn opens one; after the last the run is done. With review `end` a
- * run that waits with no open turn waits on its own pull request of it all.
+ * The crew as the server answers it, held in state: its record per workspace (/v1/projects, got or made with
+ * `PUT /v1/projects/crew`), its runs (/v1/project-runs), the person's GitHub App installation, its repos and their
+ * branches (/v1/github), and Recents (/v1/recents) over the crew's runs and the bots' own. A run starts with its first
+ * turn out (working, or being picked by the orchestrator); the next read of it finds the turn's pull request open,
+ * waiting for the person (review each_turn); merged or rejected, the next bot's turn opens one; after the last the run
+ * is done. With review `end` a run that waits with no open turn waits on its own pull request of it all.
  */
 const v1 = (path: string) => `*/api/v1${path}`;
 const at = '2026-11-21T10:00:00Z';
 const REPO = 'https://github.com/acme/site';
 
 /** GitHub's install page for the App, as the server's link leads to it; and the installation's own page. */
-export const CONNECT_URL = 'https://api.glyphh.test/v1/github/install?link=signed';
+export const INSTALL_URL = 'https://api.glyphh.test/v1/github/install?link=signed';
 export const MANAGE_URL = 'https://github.com/settings/installations/4242';
 export const repos: GitHubRepo[] = [
   { full_name: 'acme/site', url: REPO, private: false, default_branch: 'main' },
@@ -25,8 +26,8 @@ export const repos: GitHubRepo[] = [
   { full_name: 'acme/api', url: 'https://github.com/acme/api', private: true, default_branch: 'main' },
 ];
 /** The person's installation of the App: the account it is on and the repos it covers. */
-export type Connection = { login: string; repos: GitHubRepo[] };
-export const acme = (): Connection => ({ login: 'acme', repos: structuredClone(repos) });
+export type Installation = { login: string; repos: GitHubRepo[] };
+export const acme = (): Installation => ({ login: 'acme', repos: structuredClone(repos) });
 
 export const crew = [
   { id: 'b-inbox', slug: 'inbox-helper', name: 'Inbox helper' },
@@ -35,13 +36,13 @@ export const crew = [
 
 export const siteCrew = (given: Partial<Project> = {}): Project => ({
   id: 'p-site',
-  slug: 'site-crew',
-  name: 'Site crew',
+  slug: 'acme-site-main',
+  name: 'acme/site',
   repo_url: REPO,
-  github_login: 'acme',
+  github_connected: true,
   base_branch: 'main',
   members: crew,
-  instructions: 'Keep the site small and fast.',
+  instructions: '',
   instructions_path: 'PROJECT.md',
   turn_mode: 'wait',
   orchestrator: null,
@@ -96,19 +97,21 @@ const out = (n: number, given: Partial<Turn> = {}): Turn =>
 /** The orchestrator choosing who goes next: no bot yet. */
 export const picking = (n: number): Turn => out(n, { status: 'picking', bot_id: null, bot_slug: '', bot_name: '', branch: '', picked_by: 'orchestrator' });
 
-/** The orchestrator's own closing turn (cloud runs): it says the project is done, and why. */
+/** The orchestrator's own closing turn: it says the work is done, and why. */
 export const closing = (n: number, said: string): Turn =>
   out(n, { status: 'unchanged', bot_id: null, bot_slug: '', bot_name: 'Orchestrator', branch: '', picked_by: 'orchestrator', said, done: true, finished_at: at });
 
 export const projectRun = (given: Partial<ProjectRun> = {}): ProjectRun => ({
   id: 'pr-1',
-  project_slug: 'site-crew',
+  project_slug: 'acme-site-main',
   task: 'Make the home page: a hero and the three plans.',
   status: 'needs_input',
   ended: '',
   turn_mode: 'wait',
   review: 'each_turn',
   runs_on: 'rr-studio',
+  model: null,
+  effort: null,
   max_turns: 30,
   max_spend_cents: null,
   work_branch: null,
@@ -124,133 +127,141 @@ export const projectRun = (given: Partial<ProjectRun> = {}): ProjectRun => ({
   ...given,
 });
 
-/** A project run's waiting pull request (a turn's, or with review `end` the run's own) as the approvals queue lists it. */
-export const asked = (run: ProjectRun): BotRun | null => {
-  if (run.status !== 'needs_input') return null;
-  const t = run.turns.find((x) => x.status === 'open');
-  if (!t && !run.pr_url) return null;
-  const data = t
-    ? { pr_url: t.pr_url, number: t.number, title: t.title, said: t.said, files: t.files, branch: t.branch, n: t.n }
-    : { pr_url: run.pr_url, number: run.number, title: 'The whole run', said: '', files: [], branch: run.work_branch, n: run.turns.length };
-  return {
-    id: run.id,
-    bot_slug: t?.bot_slug ?? '',
-    status: 'needs_input',
-    input: run.task,
-    output: '',
-    error: '',
-    log: [],
-    data,
-    question: { question: t ? `Merge PR #${t.number} by ${t.bot_name}?` : `Merge PR #${run.number}, the whole run?`, options: ['merge', 'reject'], batch: null, answer_with: null },
-    input_tokens: 0,
-    output_tokens: 0,
-    cost_micros: 0,
-    own_key: true,
-    runs_on: run.runs_on,
-    kind: 'project',
-    project_slug: run.project_slug,
-    created_at: t?.created_at ?? run.created_at,
-    started_at: run.created_at,
-    finished_at: null,
-  };
-};
-
 type Options = {
   projects?: Project[];
   runs?: ProjectRun[];
   /** The person's installation of the Glyphh GitHub App; null: they have not connected GitHub. */
-  github?: Connection | null;
-  /** The person signs in with GitHub; off, the App cannot be installed for them (403 github_not_linked). */
-  linked?: boolean;
-  /** The server's own Claude key, which a cloud project runs on; off, a cloud run is refused (503 anthropic_off). */
-  anthropic?: boolean;
+  github?: Installation | null;
   /** The org's rrotors that are offline: a run on one is refused (409 rrotor_offline). */
   offline?: string[];
+  /** The bots' own runs, for Recents (the bots' fake holds them). */
   botRuns?: () => BotRun[];
+  /** The bots' names by slug, for Recents. */
+  botNames?: Record<string, string>;
+  /** Runs the person has pinned or archived, by id. */
+  pinned?: string[];
+  archived?: string[];
 };
 
-export function projectsFake({
-  projects = [siteCrew()],
-  runs = [],
-  github = acme(),
-  linked = true,
-  anthropic = true,
-  offline = ['rr-acme'],
-  botRuns = () => [],
-}: Options = {}) {
+export function crewFake({ projects = [siteCrew()], runs = [], github = acme(), offline = ['rr-acme'], botRuns = () => [], botNames = {}, pinned = [], archived = [] }: Options = {}) {
   const state = {
     projects: structuredClone(projects),
     runs: structuredClone(runs),
-    github: github as Connection | null,
+    github: github as Installation | null,
+    pinned: new Set(pinned),
+    archived: new Set(archived),
+    deleted: new Set<string>(),
     seen: [] as string[],
     bodies: [] as unknown[],
     reads: new Map<string, number>(),
   };
   let next = 1;
-  const notConnected = () =>
-    apiError(404, 'E_NOT_FOUND', 'Install Glyphh’s GitHub App on your GitHub account first.', { reason: 'github_app_missing', connect_url: CONNECT_URL });
-  /** Why the person's installation cannot serve that repo, as the server refuses it; nothing when it can. */
-  const refused = (repo: string) => {
-    if (!state.github) return notConnected();
-    if (state.github.repos.some((r) => r.url === repo)) return null;
-    const words = `Glyphh’s GitHub App is not on ${repo.replace('https://github.com/', '')}: add the repo on GitHub.`;
-    return apiError(404, 'E_NOT_FOUND', words, { reason: 'github_repo', connect_url: CONNECT_URL, manage_url: MANAGE_URL });
-  };
-  const installation = (c: Connection): GitHubInstallation => ({ installation_id: 4242, account_login: c.login, created_at: at, removed_at: null, manage_url: MANAGE_URL });
+  const appMissing = (repo: string) =>
+    apiError(404, 'E_NOT_FOUND', `Glyphh’s GitHub App is not installed on ${repo}.`, { reason: 'github_app_missing', install_url: INSTALL_URL });
   const find = (slug: unknown) => state.projects.find((p) => p.slug === slug);
   const run = (id: unknown) => state.runs.find((r) => r.id === id);
-  const missing = () => apiError(404, 'E_NOT_FOUND', 'There is no such project.');
-  const noRun = () => apiError(404, 'E_NOT_FOUND', 'There is no such project run.');
-  const members = (ids: string[]) => ids.map((id) => crew.find((c) => c.id === id) ?? { id, slug: id, name: id });
+  const missing = () => apiError(404, 'E_NOT_FOUND', 'There is no such workspace.');
+  const noRun = () => apiError(404, 'E_NOT_FOUND', 'There is no such run.');
+  const members = (ids: string[]) => ids.map((id) => crew.find((c) => c.id === id) ?? { id, slug: id.replace(/^b-/, ''), name: botNames[id.replace(/^b-/, '')] ?? id });
   const live = (p: Project) => state.runs.some((r) => r.project_slug === p.slug && (r.status === 'running' || r.status === 'needs_input'));
+  const short = (repo: string) => repo.replace(/^https:\/\/github\.com\//, '');
+
+  const recents = (): Recent[] => {
+    const flags = (id: string) => ({ pinned: state.pinned.has(id), archived: state.archived.has(id) });
+    const fromBots = botRuns().map(
+      (r): Recent => ({
+        id: r.id,
+        kind: 'bot',
+        title: r.input.split('\n')[0] ?? '',
+        bot_slug: r.bot_slug,
+        bot_name: botNames[r.bot_slug] ?? 'Inbox helper',
+        project_slug: null,
+        workspace: null,
+        branch: null,
+        runs_on: r.runs_on ?? null,
+        status: r.status,
+        waiting: r.status === 'needs_input',
+        created_at: r.created_at,
+        ...flags(r.id),
+      }),
+    );
+    const fromCrew = state.runs.map((r): Recent => {
+      const p = find(r.project_slug);
+      return {
+        id: r.id,
+        kind: 'crew',
+        title: r.task.split('\n')[0] ?? '',
+        bot_slug: null,
+        bot_name: 'Crew',
+        project_slug: r.project_slug,
+        workspace: p ? short(p.repo_url) : null,
+        branch: p?.base_branch ?? null,
+        runs_on: r.runs_on,
+        status: r.status,
+        waiting: r.status === 'needs_input',
+        created_at: r.created_at,
+        ...flags(r.id),
+      };
+    });
+    return [...fromBots, ...fromCrew].filter((r) => !state.deleted.has(r.id)).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  };
+  const flag = (set: Set<string>, on: boolean, word: string) =>
+    http.post(v1(`/recents/:id/${word}`), ({ params }) => {
+      const id = String(params.id);
+      const found = recents().find((r) => r.id === id);
+      if (!found) return noRun();
+      on ? set.add(id) : set.delete(id);
+      state.seen.push(`${word} ${id}`);
+      return HttpResponse.json(recents().find((r) => r.id === id));
+    });
 
   const handlers = [
     http.get(v1('/projects'), () => HttpResponse.json({ projects: state.projects })),
-    http.post(v1('/projects'), async ({ request }) => {
-      const body = (await request.json()) as NewProject;
+    // One per (repo, branch): got or made, and set to what is given.
+    http.put(v1('/projects/crew'), async ({ request }) => {
+      const body = (await request.json()) as CrewSet;
       state.bodies.push(body);
-      const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      if (find(slug)) return apiError(409, 'E_CONFLICT', `The org already has a project '${slug}': name it another way.`);
-      const no = refused(body.repo_url);
-      if (no) return no;
-      const made = siteCrew({ ...body, runs_on: body.runs_on ?? null, id: `p-${next++}`, slug, members: members(body.members), github_login: state.github!.login });
+      const repo = short(body.repo);
+      const branch = body.branch ?? 'main';
+      if (!state.github) return appMissing(repo);
+      if (!state.github.repos.some((r) => r.full_name === repo) && !repo.startsWith('acme-org/')) return appMissing(repo);
+      const { repo: _repo, branch: _branch, members: ids, ...settings } = body;
+      const found = state.projects.find((p) => short(p.repo_url) === repo && p.base_branch === branch);
+      const stamp = new Date(Date.parse(at) + next++ * 1000).toISOString();
+      if (found) {
+        Object.assign(found, settings, { members: members(ids), updated_at: stamp });
+        state.seen.push(`crew ${found.slug}`);
+        return HttpResponse.json(found);
+      }
+      const made = siteCrew({
+        runs_on: null,
+        ...settings,
+        id: `p-${next++}`,
+        slug: `${repo}-${branch}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        name: repo,
+        repo_url: `https://github.com/${repo}`,
+        base_branch: branch,
+        members: members(ids),
+        updated_at: stamp,
+      });
       state.projects.push(made);
-      state.seen.push(`create ${slug}`);
-      return HttpResponse.json(made, { status: 201 });
+      state.seen.push(`crew ${made.slug}`);
+      return HttpResponse.json(made);
     }),
-    http.get(v1('/projects/:slug'), ({ params }) => (find(params.slug) ? HttpResponse.json(find(params.slug)) : missing())),
-    http.patch(v1('/projects/:slug'), async ({ params, request }) => {
-      const p = find(params.slug);
-      if (!p) return missing();
-      const change = (await request.json()) as Partial<NewProject>;
-      state.bodies.push(change);
-      // A repo given connects the project through the caller's installation.
-      const no = change.repo_url === undefined ? null : refused(change.repo_url);
-      if (no) return no;
-      if (change.repo_url !== undefined) p.github_login = state.github!.login;
-      Object.assign(p, change, change.members ? { members: members(change.members) } : {}, { updated_at: new Date(Date.parse(at) + next++ * 1000).toISOString() });
-      state.seen.push(`update ${params.slug}`);
-      return HttpResponse.json(p);
-    }),
-    http.delete(v1('/projects/:slug'), ({ params }) => {
-      state.projects = state.projects.filter((p) => p.slug !== params.slug);
-      state.seen.push(`delete ${params.slug}`);
-      return new HttpResponse(null, { status: 204 });
-    }),
-    http.get(v1('/projects/:slug/runs'), ({ params }) => HttpResponse.json({ runs: state.runs.filter((r) => r.project_slug === params.slug) })),
+    http.get(v1('/projects/:slug/runs'), ({ params }) => HttpResponse.json({ runs: state.runs.filter((r) => r.project_slug === params.slug && !state.deleted.has(r.id)) })),
     http.post(v1('/projects/:slug/runs'), async ({ params, request }) => {
       const p = find(params.slug);
       if (!p) return missing();
-      if (p.github_login === null) return notConnected();
-      if (live(p)) return apiError(409, 'E_CONFLICT', 'The project has a run going: answer its pull request, or cancel it, first.');
+      if (live(p)) return apiError(409, 'E_CONFLICT', 'The crew has a run going here: answer its pull request, or cancel it, first.');
       if (p.runs_on && offline.includes(p.runs_on)) return apiError(409, 'E_CONFLICT', 'Its rrotor is offline: start it, or choose another place.', { reason: 'rrotor_offline' });
-      if (!p.runs_on && !anthropic) return apiError(503, 'E_UNAVAILABLE', 'Glyphh cloud cannot run projects right now.', { reason: 'anthropic_off' });
-      const { task } = (await request.json()) as { task: string };
-      state.bodies.push({ task });
+      const body = (await request.json()) as RunStart;
+      state.bodies.push(body);
       const made = projectRun({
         id: `pr-${next++}`,
         project_slug: p.slug,
-        task,
+        task: body.task,
+        model: body.model,
+        effort: body.effort,
         status: 'running',
         turn_mode: p.turn_mode,
         review: p.review,
@@ -283,7 +294,7 @@ export function projectsFake({
       if (!r) return noRun();
       const open = r.turns.find((t) => t.status === 'open');
       const whole = !open && r.review === 'end' && r.pr_url !== null;
-      if (r.status !== 'needs_input' || (!open && !whole)) return apiError(409, 'E_CONFLICT', 'That project run is not waiting on a pull request.');
+      if (r.status !== 'needs_input' || (!open && !whole)) return apiError(409, 'E_CONFLICT', 'That run is not waiting on a pull request.');
       const { answer } = (await request.json()) as { answer: 'merge' | 'reject' };
       state.bodies.push(answer);
       if (open) {
@@ -306,18 +317,46 @@ export function projectsFake({
       state.seen.push(`cancel ${r.id}`);
       return HttpResponse.json(r);
     }),
-    http.get(v1('/bot-approvals'), () =>
-      HttpResponse.json({ runs: [...botRuns().filter((r) => r.status === 'needs_input'), ...state.runs.map(asked).filter((r): r is BotRun => r !== null)] }),
-    ),
-    http.get(v1('/github/installations'), () => HttpResponse.json(state.github ? [installation(state.github)] : [])),
+
     http.post(v1('/github/install'), () => {
-      if (!linked) return apiError(403, 'E_FORBIDDEN', 'Link GitHub to your Glyphh account first, then install the App.', { reason: 'github_not_linked' });
       state.seen.push('install link');
-      return HttpResponse.json({ url: CONNECT_URL });
+      return HttpResponse.json({ url: INSTALL_URL });
     }),
     http.get(v1('/github/repos'), () =>
-      state.github ? HttpResponse.json({ account_login: state.github.login, manage_url: MANAGE_URL, repos: state.github.repos }) : notConnected(),
+      HttpResponse.json(state.github ? { account_login: state.github.login, manage_url: MANAGE_URL, repos: state.github.repos } : { account_login: '', manage_url: '', repos: [] }),
     ),
+    http.get(v1('/github/repos/:owner/:repo/branches'), ({ params }) => {
+      const name = `${String(params.owner)}/${String(params.repo)}`;
+      const found = state.github?.repos.find((r) => r.full_name === name);
+      if (!found) return appMissing(name);
+      return HttpResponse.json({ default_branch: found.default_branch, branches: [...new Set([found.default_branch, 'dev', 'release'])] });
+    }),
+
+    http.get(v1('/recents'), ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      const words = (q.get('q') ?? '').toLowerCase();
+      const all = recents();
+      const shown = all
+        .filter((r) => (q.get('archived') ? r.archived : !r.archived))
+        .filter((r) => !q.get('waiting') || r.waiting)
+        .filter((r) => !q.get('pinned') || r.pinned)
+        .filter((r) => !words || `${r.title} ${r.bot_name} ${r.workspace ?? ''}`.toLowerCase().includes(words))
+        .slice(0, Number(q.get('limit') ?? 30));
+      state.seen.push(`recents ${q.toString()}`);
+      return HttpResponse.json({ recents: shown, next_cursor: null, needs_you: all.filter((r) => r.waiting).length, archived_count: all.filter((r) => r.archived).length });
+    }),
+    flag(state.pinned, true, 'pin'),
+    flag(state.pinned, false, 'unpin'),
+    flag(state.archived, true, 'archive'),
+    flag(state.archived, false, 'unarchive'),
+    http.delete(v1('/recents/:id'), ({ params }) => {
+      const found = recents().find((r) => r.id === params.id);
+      if (!found) return noRun();
+      if (found.status === 'running' || found.waiting) return apiError(409, 'E_CONFLICT', 'That run is still going: cancel it first.', { reason: 'run_live' });
+      state.deleted.add(found.id);
+      state.seen.push(`delete ${found.id}`);
+      return new HttpResponse(null, { status: 204 });
+    }),
   ];
   return { state, handlers };
 }

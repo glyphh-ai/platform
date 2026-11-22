@@ -88,9 +88,8 @@ describe('the Marketplace’s bots', () => {
     expect(screen.getByText('Reads what came in overnight and files each email.')).toBeInTheDocument();
     const needs = screen.getByRole('list', { name: 'Connections it needs' });
     expect(await within(needs).findByText('Connected', { selector: 'span' })).toBeInTheDocument();
-    expect(within(needs).getByRole('link', { name: 'Slack' })).toHaveAttribute('href', '/connections/slack');
-    // Slack is connected right here (useConnect's popup); Add waits for it.
-    expect(within(needs).getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+    // Slack is connected in the Bots area's CONNECTIONS, the one place for it; Add waits for it.
+    expect(within(needs).getByRole('link', { name: 'Connect it in Bots' })).toHaveAttribute('href', '/bots?rail=connections&add=1');
     expect(screen.getByRole('button', { name: 'Add to my bots' })).toBeDisabled();
     expect(screen.getByText('Connect Slack first')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Its gates' })).toHaveTextContent('file_it');

@@ -22,6 +22,41 @@
   font-size: var(--text-xs);
 }
 
+/* What the bot decides, a slim line each, over the table. */
+.summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.summary li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  padding: 7px 12px;
+  font: 400 12px/1.4 var(--font-mono);
+  color: var(--text-muted);
+}
+
+.summary li + li {
+  border-top: 1px solid var(--line);
+}
+
+.summary b {
+  font: 600 13px/1.4 var(--font-sans);
+  color: var(--text);
+}
+
+.summary span::before {
+  content: '·';
+  margin: 0 8px;
+}
+
 .search {
   display: flex;
   align-items: center;

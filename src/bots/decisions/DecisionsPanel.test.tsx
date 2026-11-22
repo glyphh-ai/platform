@@ -3,7 +3,7 @@ import { decision, decisionsFake, precedent } from '@/test/botDecisions';
 import { botsFake } from '@/test/bots';
 import { renderApp } from '@/test/render';
 import { server } from '@/test/server';
-import { swarmsFake } from '@/test/swarms';
+import { crewFake } from '@/test/projects';
 import { unescaped } from './Markdown';
 import { flatFields, itemLabel } from './readable';
 
@@ -23,7 +23,7 @@ const many = () =>
   );
 
 function open(decisions = many()) {
-  server.use(...botsFake().handlers, ...swarmsFake({ swarms: [] }).handlers);
+  server.use(...botsFake().handlers, ...crewFake({ projects: [] }).handlers);
   const fake = decisionsFake({ decisions, precedents: [precedent(), precedent({ id: 'p-2', outcome: 'leave', similarity: 0.6, label: null })] });
   server.use(...fake.handlers);
   const view = renderApp('/bots/inbox-helper?panel=decisions');
@@ -39,7 +39,7 @@ describe('the Decisions panel', () => {
     const t = await table();
     await waitFor(() => expect(bodyRows(t)).toHaveLength(25));
     expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30');
-    expect(bodyRows(t)[0]).toHaveTextContent('easyleave');
+    expect(bodyRows(t)[0]).toHaveTextContent('Easyleave');
     expect(screen.getByRole('navigation', { name: 'Pages' })).toHaveTextContent('1–25 of 30');
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(bodyRows(t)).toHaveLength(5));
@@ -85,7 +85,8 @@ describe('the Decisions panel', () => {
     await user.click(within(bulk).getByRole('button', { name: 'answer' }));
     await waitFor(() => expect(fake.state.bodies.at(-1)).toEqual({ ids: ['d-30', 'd-29'], outcome: 'answer' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Chosen decisions' })).not.toBeInTheDocument());
-    await waitFor(() => expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30easyleaveanswer'));
+    await waitFor(() => expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30Easyleaveanswer'));
+    expect(await screen.findByText('Ada learned 2 decisions as answer.')).toBeInTheDocument();
     await user.click(within(t).getByRole('checkbox', { name: 'Choose every decision on this page' }));
     await user.click(within(screen.getByRole('region', { name: 'Chosen decisions' })).getByRole('button', { name: 'All right' }));
     await waitFor(() => expect(fake.state.seen.some((s) => /^confirm d-30,d-29,/.test(s))).toBe(true));
@@ -109,11 +110,12 @@ describe('the Decisions panel', () => {
     await waitFor(() => expect(bodyRows(t)).toHaveLength(25));
     await user.click(within(t).getByRole('button', { name: 'Newsletter 28' }));
     const drawer = await screen.findByRole('dialog', { name: 'Newsletter 28' });
-    expect(drawer).toHaveTextContent('Gate easy');
+    expect(drawer).toHaveTextContent('Easy ·');
+    expect(drawer.textContent).not.toMatch(/\bgates?\b|precedent/i);
     expect(within(drawer).getByText('from')).toBeInTheDocument();
     expect(drawer).toHaveTextContent('news@example.com');
-    const near = await within(drawer).findByRole('list', { name: 'Nearest precedents' });
-    expect(within(near).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Coffee next week?answerForget', 'Precedent p-2leaveForget']);
+    const near = await within(drawer).findByRole('list', { name: 'Cases it matched' });
+    expect(within(near).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Coffee next week?answerForget', 'An earlier case (p-2)leaveForget']);
     await user.click(within(near).getByRole('button', { name: 'Forget Coffee next week?' }));
     await waitFor(() => expect(fake.state.seen).toContain('forget p-1'));
     await user.keyboard('{Escape}');
@@ -122,7 +124,17 @@ describe('the Decisions panel', () => {
 
   it('says so when the bot has no decisions yet', async () => {
     open([]);
-    expect(await screen.findByText('No decisions yet: its gates decide when it runs.')).toBeInTheDocument();
+    expect(await screen.findByText('No decisions yet: they show here once it has run.')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'What it decides' })).not.toBeInTheDocument();
+  });
+
+  it('says what the bot decides in a slim line each, over the table', async () => {
+    server.use(...botsFake().handlers, ...crewFake({ projects: [] }).handlers);
+    const stat = { by: { ada: 111, you: 18, default: 0 }, corrected: 4, confirmed: 9, accuracy: 0.9, days: [] };
+    server.use(...decisionsFake({ decisions: many(), stats: [{ gate: 'urgency', decisions: 129, ask_rate: 0.18, agreement: 0.87, ...stat }, { gate: 'reply_tone', decisions: 1, ask_rate: null, agreement: null, ...stat }, { gate: 'unused', decisions: 0, ask_rate: null, agreement: null, ...stat }] }).handlers);
+    renderApp('/bots/inbox-helper?panel=decisions');
+    const lines = await screen.findByRole('list', { name: 'What it decides' });
+    expect(within(lines).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Urgencydecided 129 timesasks you 18%right 87% when it asked', 'Reply tonedecided 1 time']);
   });
 });
 

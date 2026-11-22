@@ -5,13 +5,13 @@ import { LoadingCard, useToast } from '@/ui';
 import { Markdown } from './Markdown';
 import { OutcomePill } from './OutcomePill';
 import { RightWrong } from './RightWrong';
-import { fieldName, modeWords, pct, when, whoWords } from './words';
+import { fieldName, modeWords, pct, topic, when, whoWords } from './words';
 import styles from './decisions.module.css';
 
 const LONG = 160; // a field longer than this, or with lines, reads as markdown
 
-/** One decision read in full: its item's fields, who decided and why, Right and Wrong, and the precedents its gate
- * stands on for it now, nearest first (each one forgettable). Escape or Close shuts it. */
+/** One decision read in full: its item's fields, who decided and why, Right and Wrong, and the earlier cases it
+ * matched, nearest first (each one forgettable). Escape or Close shuts it. */
 export function DecisionDrawer({ slug, id, onClose }: { slug: string; id: string; onClose: () => void }) {
   const found = useDecision(id);
   const forget = useForgetPrecedent(slug);
@@ -26,7 +26,7 @@ export function DecisionDrawer({ slug, id, onClose }: { slug: string; id: string
     <aside className={styles.drawer} role="dialog" aria-modal="false" aria-label={d ? d.label : 'Decision'}>
       <div className={styles.drawerHead}>
         <div>
-          <span className={styles.label}>{d ? `Gate ${d.gate} · ${when(d.at)}` : 'Decision'}</span>
+          <span className={styles.label}>{d ? `${topic(d.gate)} · ${when(d.at)}` : 'Decision'}</span>
           <h2>{d?.label ?? ' '}</h2>
         </div>
         <button type="button" className={styles.close} onClick={onClose}>
@@ -65,15 +65,15 @@ export function DecisionDrawer({ slug, id, onClose }: { slug: string; id: string
             )}
           </div>
           <div className={styles.step}>
-            <span className={styles.label}>Nearest precedents</span>
+            <span className={styles.label}>Cases it matched</span>
             {d.precedents.length === 0 ? (
-              <p className={styles.muted}>None yet: the gate holds no precedent close to it.</p>
+              <p className={styles.muted}>None yet: nothing it has seen is close to this.</p>
             ) : (
-              <ul className={styles.precedents} aria-label="Nearest precedents">
+              <ul className={styles.precedents} aria-label="Cases it matched">
                 {d.precedents.map((p) => (
                   <li key={p.id}>
                     <span className={styles.itemText} title={p.id}>
-                      {p.label ?? `Precedent ${p.id}`}
+                      {p.label ?? `An earlier case (${p.id})`}
                     </span>
                     <span className={styles.outcome}>{String(p.outcome ?? '—')}</span>
                     <span className={styles.sim} title={`${pct(p.similarity)} alike`} aria-label={`${pct(p.similarity)} alike`}>
@@ -84,7 +84,7 @@ export function DecisionDrawer({ slug, id, onClose }: { slug: string; id: string
                       className={styles.wrong}
                       aria-label={`Forget ${p.label ?? p.id}`}
                       disabled={forget.isPending}
-                      onClick={() => forget.mutate({ gate: d.gate, id: p.id }, { onSuccess: (r) => toast.show(`Gate ${r.gate} forgot it; it holds ${r.precedents} precedents.`) })}
+                      onClick={() => forget.mutate({ gate: d.gate, id: p.id }, { onSuccess: (r) => toast.show(`Forgotten. ${topic(r.gate)} now rests on ${r.precedents} ${r.precedents === 1 ? 'case' : 'cases'}.`) })}
                     >
                       Forget
                     </button>

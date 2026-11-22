@@ -1,5 +1,5 @@
 // The chat, the centre of the Bots area, as the Glyphh Bot app's (glyphh-bot src/renderer/src/Chat.tsx): one bot's
-// chat, or a project's crew. A run is a conversation: what the person asked on the right, the bot's turn on the left
+// chat, or the crew's. A run is a conversation: what the person asked on the right, the bot's turn on the left
 // with its cat, a line that folds its steps, what Ada decided as rows to keep or correct, its words as markdown, and
 // what it asks, answered in place. Past runs are the chat's history. With nothing said yet: the cat or cats over the
 // rings, the headline, ideas and the composer.
@@ -17,9 +17,9 @@ import {
   type Answer,
   type Bot,
   type BotRun,
-  type Every,
   type PermissionMode,
 } from '@/api/bots';
+import { installUrl } from '@/api/github';
 import {
   runGoing,
   useAnswerProjectRun,
@@ -27,8 +27,7 @@ import {
   useProjectRun,
   useProjectRuns,
   useRunProject,
-  useUpdateProject,
-  type Project,
+  type Effort,
   type ProjectRun,
   type Review,
   type Turn,
@@ -37,27 +36,36 @@ import { unescaped } from '@/bots/decisions/Markdown';
 import { noClaudeStep, RunData } from '@/bots/decisions/RunData';
 import { TurnDecisions } from '@/bots/decisions/TurnDecisions';
 import { ago, dollars, plural, stamp } from '@/lib/format';
-import { connectUrl } from '@/api/github';
-import { useNarration } from '@/pages/projects/narration';
-import { CLOUD_NOTE, endedWords } from '@/pages/projects/parts';
-import { EVERY, scheduleOf } from '../schedule';
-import { botTag, BotCat, RUN_WORDS, runSummary, shortModel, useShell } from './bits';
+import { BotCat, effortOptions, EFFORTS, RUN_WORDS, runSummary, shortModel } from './bits';
 import { Composer, SelectChip } from './Composer';
+import type { Crew } from './crew';
 import { RunDecisions } from './Decisions';
 import { Icon, ICON, Reactor } from './icons';
 import { Markdown } from './Markdown';
+import { useNarration } from './narration';
 
-/** Which tool steps wait for the person, as the pill says it. */
+/** When a bot must ask before it acts, as the pill and its settings say it. */
 export const MODES: ReadonlyArray<{ value: PermissionMode; label: string; hint: string }> = [
-  { value: 'ask', label: 'Ask first', hint: 'Every tool step waits for your yes, unless its connection allows that tool.' },
-  { value: 'connection', label: 'Follow connections', hint: 'Only the tools a connection says to ask about wait for you.' },
-  { value: 'auto', label: 'Run on its own', hint: 'Allowed tools run without asking. Blocked tools still never run.' },
+  { value: 'ask', label: 'Ask me first', hint: 'It waits for your yes before every action.' },
+  { value: 'connection', label: 'Follow each app’s settings', hint: 'It asks only where an app is set to ask.' },
+  { value: 'auto', label: 'Act on its own', hint: 'It does not ask. What you blocked still never happens.' },
 ];
 
-const REVIEWS: ReadonlyArray<{ value: Review; label: string }> = [
-  { value: 'each_turn', label: 'Each turn' },
-  { value: 'end', label: 'At the end' },
+/** The crew's permission mode: when its pull requests wait for the person. */
+const CREW_MODES: ReadonlyArray<{ value: Review; label: string }> = [
+  { value: 'each_turn', label: 'Ask me at each pull request' },
+  { value: 'end', label: 'One review at the end' },
 ];
+
+/** Why a run ended, in words; nothing while it has not. */
+const endedWords = (run: Pick<ProjectRun, 'ended' | 'max_turns'>) =>
+  ({
+    '': '',
+    done: "The crew said it's done",
+    orchestrator: "The orchestrator said it's done",
+    max_turns: `Stopped at the safety cap of ${run.max_turns} turns`,
+    max_spend: 'Stopped at the spend cap',
+  })[run.ended];
 
 /** The chat scrolls to the newest as it grows, unless the person scrolled up to read; `focus` is a message to show. */
 function useFollow(dep: unknown, focus: string | null) {
@@ -255,9 +263,8 @@ const usePlaceName = () => {
   return (id: string | null | undefined) => (id ? (places.data?.find((p) => p.id === id)?.name ?? 'your machine') : null);
 };
 
-/** One bot's chat: its runs as the conversation, the composer, and its pills (Ada, runs on, model, permission, schedule). */
+/** One bot's chat: its runs as the conversation, the composer, and its three pills (model, effort, permission mode). */
 export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string | null; fresh: boolean; onSent: () => void }) {
-  const shell = useShell();
   const runs = useBotRuns(bot.slug);
   const start = useRunBot(bot.slug);
   const update = useUpdateBot(bot.slug);
@@ -271,7 +278,7 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
   const { scroller, onScroll } = useFollow(runs.data, focus);
   const home = bot.runs_on ? places.data?.find((p) => p.id === bot.runs_on) : undefined;
   const mode = bot.permission_mode ?? 'ask';
-  const schedule = scheduleOf(bot.schedule);
+  const effort = bot.effort ?? models.data?.default_effort ?? 'medium';
 
   const send = (text: string) => start.mutate(text, { onSuccess: onSent });
   const ideas = [...new Set([bot.schedule?.input, 'Do today’s run', 'Run on what is new', 'Show what you would do, and change nothing'].filter((t): t is string => Boolean(t)))].slice(0, 3);
@@ -289,31 +296,12 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
         start.error ? (
           <span className="err">{start.error.message}</span>
         ) : home && !home.linked ? (
-          `${home.name} is offline: start it, or pick Glyphh cloud, to run ${bot.name}.`
+          `${home.name} is offline: start it, or change where ${bot.name} runs in its settings.`
         ) : update.error ? (
           <span className="err">{update.error.message}</span>
         ) : null
       }
     >
-      <button
-        type="button"
-        className={bot.gate_models.length ? 'ctl on hot' : 'ctl'}
-        title="What its gates learned in Ada"
-        onClick={() => shell.openPanel('gates')}
-      >
-        <i className="led" /> Ada · {bot.gate_models.length ? plural(bot.gate_models.length, 'gate') : 'no gates'}
-      </button>
-      <SelectChip
-        title="Runs on"
-        busy={update.isPending}
-        value={bot.runs_on ?? ''}
-        options={(places.data ?? [{ id: null, name: 'Glyphh cloud', mode: 'cloud' as const, linked: true }]).map((p) => ({
-          value: p.id ?? '',
-          label: p.linked ? p.name : `${p.name} (offline)`,
-          disabled: !p.linked && p.id !== (bot.runs_on ?? null),
-        }))}
-        onPick={(id) => update.mutate({ runs_on: id || null })}
-      />
       <SelectChip
         title="Model"
         busy={update.isPending}
@@ -321,6 +309,7 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
         options={models.data?.models.length ? models.data.models.map((m) => ({ value: m.id, label: shortModel(m.name) })) : [{ value: bot.model, label: shortModel(bot.model) || 'Model' }]}
         onPick={(model) => update.mutate({ model })}
       />
+      <SelectChip title="Effort" busy={update.isPending} value={effort} options={effortOptions(effort)} onPick={(next) => update.mutate({ effort: next })} />
       <SelectChip
         title="Permission mode"
         busy={update.isPending}
@@ -328,13 +317,6 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
         value={mode}
         options={MODES}
         onPick={(permission_mode) => update.mutate({ permission_mode })}
-      />
-      <SelectChip
-        title="Schedule"
-        busy={update.isPending}
-        value={schedule.every}
-        options={EVERY.map((e) => ({ value: e.value, label: e.value === 'off' ? 'No schedule' : e.label }))}
-        onPick={(every: Every) => update.mutate({ schedule: { ...schedule, every } })}
       />
     </Composer>
   );
@@ -344,7 +326,6 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
       <div className="room-head">
         <div className="solo">
           <b>{bot.name}</b>
-          <span>{botTag(bot)}</span>
           <small>{bot.summary}</small>
         </div>
       </div>
@@ -359,7 +340,7 @@ export function BotChat({ bot, focus, fresh, onSent }: { bot: Bot; focus: string
             </div>
           }
           headline={`What should ${bot.name} do?`}
-          sub={bot.summary || 'Say it or type it. It decides with its gates in Ada, and asks you when it is not sure.'}
+          sub={bot.summary || 'Say it or type it. It asks you when it is not sure, and learns from your answers.'}
           ideas={ideas}
           onIdea={send}
         >
@@ -541,21 +522,18 @@ function CrewRun({ run: listed, bots }: { run: ProjectRun; bots: Bot[] }) {
 }
 
 /** Who is in the crew, who is up, and how each turn's pull request went (the strip at the top). */
-function Stage({ project, bots, run }: { project: Project; bots: Bot[]; run: ProjectRun | undefined }) {
+function Stage({ members, run }: { members: Bot[]; run: ProjectRun | undefined }) {
   const up = run?.turns.find((t) => t.status === 'running')?.bot_slug;
   const turns = run?.turns.filter((t) => t.status !== 'picking') ?? [];
   return (
     <div className="stage">
       <div className="queue" aria-label="The crew">
-        {project.members.map((m) => {
-          const bot = bots.find((b) => b.slug === m.slug);
-          return (
-            <div key={m.id} className={`seat ${up === m.slug ? 'up thinking' : ''}`}>
-              <BotCat look={bot?.look} mascot={bot?.mascot} size={26} busy={up === m.slug} />
-              <span>{m.name}</span>
-            </div>
-          );
-        })}
+        {members.map((b) => (
+          <div key={b.id} className={`seat ${up === b.slug ? 'up thinking' : ''}`}>
+            <BotCat look={b.look} mascot={b.mascot} size={26} busy={up === b.slug} />
+            <span>{b.name}</span>
+          </div>
+        ))}
         {run && runGoing(run.status) && <span className="stage-info">Turn {run.turns.length}</span>}
       </div>
       {run && turns.length > 0 && (
@@ -579,120 +557,103 @@ function Stage({ project, bots, run }: { project: Project; bots: Bot[]; run: Pro
 
 const CREW_IDEAS = ['Build a one-page site for a product launch', 'Make a tiny browser game with a high score', 'Plan and write a study guide for my next test'];
 
-/** A project's chat: its crew taking turns on one repo, each turn a pull request. */
-export function CrewChat({ project, bots, focus, fresh, onSent }: { project: Project; bots: Bot[]; focus: string | null; fresh: boolean; onSent: () => void }) {
-  const runs = useProjectRuns(project.slug);
-  const start = useRunProject(project.slug);
-  const update = useUpdateProject(project.slug);
+const OWN = '';
+
+/**
+ * The crew's chat: the ticked bots taking turns in the workspace, each turn a pull request. Under the composer the
+ * same three pills as a bot's: the model and effort for the next task (each bot's own unless chosen), and when its
+ * pull requests wait for the person. Everything else about the crew is in Crew settings.
+ */
+export function CrewChat({ crew, bots, focus, fresh, onSent }: { crew: Crew; bots: Bot[]; focus: string | null; fresh: boolean; onSent: () => void }) {
+  const slug = crew.project?.slug;
+  const runs = useProjectRuns(slug);
+  const start = useRunProject(slug);
   const cancel = useCancelProjectRun();
-  const places = useBotPlaces();
+  const models = useBotModels();
   const thread = [...(runs.data ?? [])].slice(0, 20).reverse();
-  const hero = fresh || (runs.data !== undefined && thread.length === 0);
+  const hero = fresh || !slug || (runs.data !== undefined && thread.length === 0);
   const listed = thread.at(-1);
   // The strip on top follows the run as its turn does: the run itself, read again while a turn is out.
   const live = useProjectRun(listed && runGoing(listed.status) ? listed.id : null);
   const latest = live.data && live.data.id === listed?.id ? live.data : listed;
   const active = thread.findLast((r) => runGoing(r.status));
   const { scroller, onScroll } = useFollow(runs.data, focus);
-  const members = project.members.map((m) => ({ m, bot: bots.find((b) => b.slug === m.slug) }));
-  const failed = start.error ?? update.error;
-  const reconnect = connectUrl(failed);
-  const cloud = project.runs_on === null;
-  useNarration(project.narrate, latest);
-  // Who picks the next bot, as one choice: wait your turn, or an orchestrator (Claude, or one of the crew's bots).
-  const ORCH = 'orchestrator:';
-  const turnMode = project.turn_mode === 'wait' ? 'wait' : `${ORCH}${project.orchestrator ?? ''}`;
+  const members = bots.filter((b) => crew.members.includes(b.id));
+  const failed = start.error ?? crew.error;
+  const install = installUrl(failed);
+  useNarration(crew.settings.narrate, latest);
 
-  const send = (text: string) => start.mutate(text, { onSuccess: onSent });
+  const send = (task: string) => {
+    if (slug) start.mutate({ task, model: crew.model, effort: crew.effort }, { onSuccess: onSent });
+  };
 
   const composer = (
     <Composer
       hero={hero}
-      focusKey={project.slug}
+      focusKey="crew"
       placeholder="Give the crew a task…"
       busy={Boolean(active)}
       sending={start.isPending}
+      off={!slug || members.length === 0}
       onSend={send}
       onStop={active ? () => cancel.mutate(active.id) : undefined}
       allowEmpty
       note={
-        failed || cloud ? (
+        failed ? (
           <>
-            {failed && <span className="err">{failed.message}</span>}
-            {reconnect && (
+            <span className="err">{failed.message}</span>
+            {install && (
               <>
                 {' '}
-                <a href={reconnect} target="_blank" rel="noreferrer">
+                <a href={install} target="_blank" rel="noreferrer">
                   Connect GitHub
                 </a>
               </>
             )}
-            {failed && cloud && <br />}
-            {cloud && CLOUD_NOTE}
           </>
+        ) : !crew.ready ? null : !slug ? (
+          'Choose a workspace in the top bar first: the repository and branch the crew works in.'
+        ) : members.length === 0 ? (
+          'Tick a cat on the crew card to put a bot in the crew.'
         ) : null
       }
     >
-      <span className="ctl on hot">
-        <i className="led" /> Project
-      </span>
       <SelectChip
-        title="Runs on"
-        busy={update.isPending}
-        value={project.runs_on ?? ''}
-        options={(places.data ?? [{ id: null, name: 'Glyphh cloud', mode: 'cloud' as const, linked: true }]).map((p) => ({
-          value: p.id ?? '',
-          label: p.linked ? p.name : `${p.name} (offline)`,
-          disabled: !p.linked && p.id !== project.runs_on,
-        }))}
-        onPick={(id) => update.mutate({ runs_on: id || null })}
+        title="Model"
+        value={crew.model ?? OWN}
+        options={[{ value: OWN, label: 'Each bot’s model' }, ...(models.data?.models ?? []).map((m) => ({ value: m.id, label: shortModel(m.name) }))]}
+        onPick={(model) => crew.setRun({ model: model || null })}
       />
       <SelectChip
-        title="Turn mode"
-        wide
-        busy={update.isPending}
-        value={turnMode}
-        options={[
-          { value: 'wait', label: 'Wait your turn' },
-          { value: ORCH, label: 'Orchestrator: Claude' },
-          ...project.members.map((m) => ({ value: `${ORCH}${m.id}`, label: `Orchestrator: ${m.name}` })),
-        ]}
-        onPick={(v) => update.mutate(v === 'wait' ? { turn_mode: 'wait', orchestrator: null } : { turn_mode: 'orchestrator', orchestrator: v.slice(ORCH.length) || null })}
+        title="Effort"
+        value={crew.effort ?? OWN}
+        options={[{ value: OWN, label: 'Each bot’s effort' }, ...EFFORTS]}
+        onPick={(effort) => crew.setRun({ effort: (effort || null) as Effort | null })}
       />
-      <SelectChip title="Pull requests" busy={update.isPending} value={project.review} options={REVIEWS} onPick={(review) => update.mutate({ review })} />
-      <button
-        type="button"
-        className={`ctl ${project.narrate ? 'on' : ''}`}
-        aria-pressed={project.narrate}
-        disabled={update.isPending}
-        title="Reads each new turn aloud while this chat is open. Off, and whenever the chat is closed, runs are silent."
-        onClick={() => update.mutate({ narrate: !project.narrate })}
-      >
-        <i className="led" /> Narrate when watched
-      </button>
+      <SelectChip title="Permission mode" wide busy={crew.pending} value={crew.settings.review} options={CREW_MODES} onPick={(review) => crew.save({ settings: { review } })} />
     </Composer>
   );
 
   return (
-    <section className="center" aria-label={`${project.name}’s chat`}>
+    <section className="center" aria-label="The crew’s chat">
       <div className="room-head">
-        <Stage project={project} bots={bots} run={hero ? undefined : latest} />
+        <Stage members={members} run={hero ? undefined : latest} />
       </div>
       {runs.error && <div className="err pad">{runs.error.message}</div>}
       {hero ? (
         <Hero
           cats={
             <div className="hero-crew">
-              {members.map(({ m, bot }) => (
-                <span key={m.id}>
-                  <BotCat look={bot?.look} mascot={bot?.mascot} size={104} mode="full" />
+              {members.map((b) => (
+                <span key={b.id}>
+                  <BotCat look={b.look} mascot={b.mascot} size={104} mode="full" />
                 </span>
               ))}
             </div>
           }
           headline="What are we making?"
-          sub="Say it or type it, or send nothing and the crew works from the instructions. Each turn is a pull request."
-          ideas={CREW_IDEAS}
+          sub="Say it or type it. The crew takes turns, and each turn is a pull request."
+          ideas={slug ? CREW_IDEAS : []}
           onIdea={send}
         >
           {composer}

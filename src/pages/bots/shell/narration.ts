@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { ProjectRun } from '@/api/projects';
 
 /**
- * Reads new turns aloud with the browser's own voice, only while `on` (the project's Narrate when watched) and the
- * crew's chat is open and in front. A run mostly goes headless: nothing here speaks unless asked to, and what was
+ * Reads new turns aloud with the browser's own voice, only while `on` (the crew's Narrate when watched) and the
+ * crew's chat is open and in front. A run mostly goes unwatched: nothing here speaks unless asked to, and what was
  * already said when the run came into view is never read back.
  */
 export function useNarration(on: boolean, run: ProjectRun | undefined) {

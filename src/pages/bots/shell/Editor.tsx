@@ -1,11 +1,12 @@
 // The bot editor, a modal as the Glyphh Bot app's (glyphh-bot src/renderer/src/Modals.tsx, BotEditor), in words a
 // business person knows: on the left the card with the big cat, the name, what it is for, Shuffle the cat and Describe
-// a new one; on the right plain fields under mono caps labels, with Access (where it runs, its apps, its folders and
-// when it must ask) the clearest part. How the bot works inside is never shown: Claude writes it from the top field
-// ("Tell Claude what to change") and it is kept here as loaded and saved back as it is.
+// a new one; on the right plain fields under mono caps labels: Access (its apps as on/off pills, its folders on a
+// rrotor, and when it must ask), then when it runs, where it runs, its voice, model and effort. Nothing is folded
+// away. How the bot works inside is never shown: Claude writes it from the top field ("Tell Claude what to change")
+// and it is kept here as loaded and saved back as it is.
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { api } from '@/api/client';
 import {
   botKeys,
@@ -14,10 +15,8 @@ import {
   useBotPlaces,
   useBotVoices,
   useConnections,
-  useConnectionTools,
   useCreateBot,
   useDeleteBot,
-  useSetPermissions,
   connectionToolsQuery,
   useDraftBot,
   useUpdateBot,
@@ -26,7 +25,6 @@ import {
   type BotFolder,
   type BotScope,
   type BotSpec,
-  type Connection,
   type ConnectionTool,
   type Every,
   type PermissionMode,
@@ -34,27 +32,18 @@ import {
   type Said,
   type Schedule,
 } from '@/api/bots';
-import { permissionChanges } from '@/api/connections';
 import { useMachineFolders } from '@/api/rrotorFolders';
 import { randomLook, type Look } from '@/bots/cat/look';
 import { DescribeMascotModal } from '@/bots/mascot/DescribeMascotModal';
-import { ToolPermissions } from '@/bots/tools/ToolPermissions';
-import { plural } from '@/lib/format';
 import { outcomesOf } from '../ada';
-import { botPath } from '../parts';
 import { DAYS, EVERY, scheduleOf, sentence, zones } from '../schedule';
-import { BotCat, Modal, shortModel, useShell } from './bits';
-import { ConnectorIcon } from './Rail';
+import { botPath, BotCat, effortOptions, Modal, shortModel, useShell } from './bits';
+import { MODES } from './Chat';
+import { ConnectorIcon } from './Connections';
 
 /** A bot made by hand starts by doing its job with what it is given; Claude writes the rest from the top field. */
 const FIRST_SPEC: BotSpec = { touches: 'read_only', loop: [{ id: 'work', agent: 'Do your job with what you were given: $input' }] };
 
-/** When the bot must ask before it acts, in plain words. */
-const ASKS: ReadonlyArray<{ value: PermissionMode; label: string; hint: string }> = [
-  { value: 'ask', label: 'Ask me first', hint: 'It waits for your yes before every action.' },
-  { value: 'connection', label: 'Follow each app’s settings', hint: 'It asks only where an app is set to ask.' },
-  { value: 'auto', label: 'Act on its own', hint: 'It does not ask. What you blocked still never happens.' },
-];
 
 /** What the server found wrong, as a sentence: without where in the bot's insides it found it. */
 function plain(problem: string): string {
@@ -74,85 +63,17 @@ function decides(spec: BotSpec): string {
     .join(', ');
 }
 
-const titleOf = (c: Connection) => (c.label ? `${c.app_name} · ${c.label}` : c.app_name);
-
-/** One connected app: its icon and name, how many of its tools the bot has, Choose tools, and on or off. */
-function AppRow({ connection, scope, onToggle, onChoose }: { connection: Connection; scope: BotScope | undefined; onToggle: () => void; onChoose: () => void }) {
-  const tools = useConnectionTools(connection.id);
-  const on = scope !== undefined;
-  const chosen = new Set(scope?.tools ?? []);
-  const lit = tools.data ? tools.data.filter((t) => chosen.has(t.key) && t.permission !== 'deny').length : chosen.size;
-  return (
-    <li className={on ? 'approw on' : 'approw'}>
-      <ConnectorIcon name={connection.app_name} icon={connection.app_icon} size={22} />
-      <span className="appname">
-        <b>{connection.app_name}</b>
-        {connection.label && <small>{connection.label}</small>}
-      </span>
-      {on && <span className="appcount">{tools.data ? `${lit} of ${plural(tools.data.length, 'tool')}` : plural(lit, 'tool')}</span>}
-      {on && (
-        <button type="button" className="btn ghost tiny" aria-label={`Choose tools: ${connection.app_name}`} onClick={onChoose}>
-          Choose tools
-        </button>
-      )}
-      <button type="button" role="switch" aria-checked={on} aria-label={connection.app_name} title={on ? 'On: the bot can use it' : 'Off: the bot cannot use it'} className="sw" onClick={onToggle}>
-        <i />
-      </button>
-    </li>
-  );
-}
-
-/** Which of an app's tools the bot may use, as claude.ai's tool permissions (the platform's own component). */
-function ChooseTools({ connection, scope, onChange, onClose }: { connection: Connection; scope: BotScope; onChange: (tools: string[]) => void; onClose: () => void }) {
-  const tools = useConnectionTools(connection.id);
-  const permissions = useSetPermissions(connection.id);
-  const list = tools.data ?? [];
-  const chosen = new Set(scope.tools);
-  /** Asking or not is the app's own setting, for every bot; a blocked tool switched on is let back, asking. */
-  const put = (keys: string[], ask: boolean | 'unblock') => {
-    const changed = permissionChanges(list, keys, (t) => (ask === 'unblock' ? (t.permission === 'deny' ? 'ask' : null) : t.permission === 'deny' ? null : ask ? 'ask' : 'allow'));
-    if (Object.keys(changed).length > 0) permissions.mutate(changed);
-  };
-  const onSwitch = (keys: string[], next: boolean) => {
-    if (next) {
-      onChange([...new Set([...scope.tools, ...keys])]);
-      put(keys, 'unblock');
-    } else {
-      const off = new Set(keys);
-      onChange(scope.tools.filter((k) => !off.has(k)));
-    }
-  };
-  return (
-    <Modal title={`${titleOf(connection)} tools`} front onClose={onClose}>
-      {tools.isPending && <p className="dim">Reading its tools…</p>}
-      {(tools.error ?? permissions.error) && <div className="err">{(tools.error ?? permissions.error)!.message}</div>}
-      {tools.data?.length === 0 && <p className="dim">This app has no tools.</p>}
-      {list.length > 0 && (
-        <div className="gb-plain" data-theme="dark-hc">
-          <ToolPermissions label={`${titleOf(connection)} tools`} tools={list} busy={permissions.isPending} isOn={(t) => chosen.has(t.key) && t.permission !== 'deny'} onSwitch={onSwitch} onApproval={put} />
-        </div>
-      )}
-      <p className="dim toolnote">A tool that is off is never used. The hand makes it wait for your yes, for every bot that uses {connection.app_name}.</p>
-      <div className="row end">
-        <button type="button" className="btn primary" onClick={onClose}>
-          Done
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 /** The folders on the machine the bot runs on, read from that machine itself: open one, or add it. */
 function FolderPicker({ place, taken, onAdd, onClose }: { place: Place; taken: string[]; onAdd: (path: string) => void; onClose: () => void }) {
   const [trail, setTrail] = useState<string[]>([]);
   const [typed, setTyped] = useState('');
   const under = trail.at(-1) ?? '';
-  const folders = useMachineFolders(place.url, under);
+  const folders = useMachineFolders(place.id, under);
   const add = (path: string) => {
     onAdd(path);
     onClose();
   };
-  const unreachable = !place.url || folders.isError;
+  const unreachable = folders.isError;
   return (
     <Modal title={`Folders on ${place.name}`} front onClose={onClose}>
       <div className="form">
@@ -171,7 +92,9 @@ function FolderPicker({ place, taken, onAdd, onClose }: { place: Place; taken: s
             </div>
             <ul className="folderlist" aria-label="Folders">
               {folders.isPending && <li className="dim">Reading its folders…</li>}
-              {folders.data?.length === 0 && <li className="dim">No folders in here.</li>}
+              {folders.data?.length === 0 && (
+                <li className="dim">{under ? 'No folders in here.' : `${place.name} shares no folders yet. Whoever runs it chooses which folders bots may be given.`}</li>
+              )}
               {(folders.data ?? []).map((f) => (
                 <li key={f.path}>
                   <button type="button" className="folderopen" title={f.path} aria-label={`Open ${f.name}`} onClick={() => setTrail((t) => [...t, f.path])}>
@@ -204,8 +127,7 @@ function FolderPicker({ place, taken, onAdd, onClose }: { place: Place; taken: s
   );
 }
 
-/** `advanced` is what old links still ask for (`?edit=advanced`, `tab=loop`): there is one editor, the plain one. */
-export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolean; onClose: () => void }) {
+export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => void }) {
   const shell = useShell();
   const navigate = useNavigate();
   const queries = useQueryClient();
@@ -226,6 +148,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
   const [voice, setVoice] = useState(bot?.voice ?? '');
   const [model, setModel] = useState(bot?.model ?? '');
   const [mode, setMode] = useState<PermissionMode>(bot?.permission_mode ?? 'ask');
+  const [effort, setEffort] = useState(bot?.effort ?? '');
   const [runsOn, setRunsOn] = useState<string | null>(bot?.runs_on ?? null);
   const [folders, setFolders] = useState<BotFolder[]>(() => (bot?.folders ?? []).map((f) => ({ ...f })));
   const [schedule, setSchedule] = useState<Schedule>(() => scheduleOf(bot?.schedule));
@@ -239,10 +162,10 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
   const [drafted, setDrafted] = useState<BotDraft | null>(null);
   const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [choosing, setChoosing] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
 
   const chosenModel = model || models.data?.models.find((m) => m.default)?.id || models.data?.models[0]?.id || '';
+  const chosenEffort = effort || models.data?.default_effort || 'medium';
   const ready = name.trim() !== '' && instructions.trim() !== '';
   const saving = create.isPending || update.isPending;
   const failed = create.error ?? update.error;
@@ -253,9 +176,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
   const decided = decides(spec);
   const everywhere = places.data ?? [{ id: null, name: 'Glyphh cloud', mode: 'cloud' as const, linked: true }];
   const place = runsOn ? everywhere.find((p) => p.id === runsOn) : undefined;
-  const open = choosing ? (connections.data ?? []).find((c) => c.id === choosing) : undefined;
-  const openScope = scopes.find((s) => s.connection_id === choosing);
-  const under = describing || deleting || open !== undefined || picking;
+  const under = describing || deleting || picking;
 
   /** The bot as it stands in the fields, for Claude to change: its apps are those of the connections it has. */
   const current = (): BotDraft => {
@@ -303,16 +224,12 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
     );
   };
 
-  /** An app's switch: on gives the bot every tool of it that is not blocked (Choose tools narrows it). */
+  /** An app's pill: on gives the bot every tool of it that is not switched off for the org (in the app's own connection). */
   const toggle = async (id: string) => {
     setScoped(true);
     if (scopes.some((s) => s.connection_id === id)) return setScopes((all) => all.filter((s) => s.connection_id !== id));
     const tools = await queries.fetchQuery(connectionToolsQuery(id)).catch(() => [] as ConnectionTool[]);
     setScopes((all) => (all.some((s) => s.connection_id === id) ? all : [...all, { connection_id: id, tools: tools.filter((t) => t.permission !== 'deny').map((t) => t.key) }]));
-  };
-  const setTools = (id: string, tools: string[]) => {
-    setScoped(true);
-    setScopes((all) => all.map((s) => (s.connection_id === id ? { ...s, tools } : s)));
   };
 
   /** Folders are a machine's own: on another machine, or on Glyphh cloud, the bot has none of them. */
@@ -338,6 +255,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
       voice,
       model: chosenModel || undefined,
       permission_mode: mode,
+      effort: chosenEffort,
       schedule,
       runs_on: runsOn,
       folders: runsOn ? folders : [],
@@ -421,32 +339,26 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
               </label>
 
               <h3>Access</h3>
-              <label>
-                Where it runs
-                <select aria-label="Where it runs" value={runsOn ?? ''} onChange={(e) => moveTo(e.target.value || null)}>
-                  {everywhere.map((p) => (
-                    <option key={p.id ?? ''} value={p.id ?? ''} disabled={!p.linked && p.id !== runsOn}>
-                      {p.linked ? p.name : `${p.name} (offline)`}
-                    </option>
-                  ))}
-                </select>
-                <small>{runsOn ? 'On that machine, through its rrotor, so it can use the folders you choose there.' : 'On Glyphh. Nothing to install.'}</small>
-              </label>
-
               <label id="apps-label">Apps it can use</label>
-              <ul className="approws" aria-labelledby="apps-label">
-                {connections.data?.length === 0 && <li className="dim">No apps connected yet.</li>}
-                {(connections.data ?? []).map((c) => (
-                  <AppRow key={c.id} connection={c} scope={scopes.find((s) => s.connection_id === c.id)} onToggle={() => void toggle(c.id)} onChoose={() => setChoosing(c.id)} />
-                ))}
-              </ul>
-              <Link className="link" to="/connections">
-                + Connect an app
-              </Link>
+              <div className="swatches" role="group" aria-labelledby="apps-label">
+                {connections.data?.length === 0 && <small className="dim">No apps connected yet.</small>}
+                {(connections.data ?? []).map((c) => {
+                  const on = scopes.some((s) => s.connection_id === c.id);
+                  return (
+                    <button key={c.id} type="button" aria-pressed={on} className={on ? 'pill app on' : 'pill app'} title={`${c.app_name}${c.label ? ` · ${c.label}` : ''}: ${on ? 'it can use it' : 'it cannot use it'}`} onClick={() => void toggle(c.id)}>
+                      <ConnectorIcon name={c.app_name} icon={c.app_icon} size={14} />
+                      {c.app_name}
+                    </button>
+                  );
+                })}
+                <button type="button" className="pill app add" onClick={() => shell.openConnections(true)}>
+                  + Connect an app
+                </button>
+              </div>
 
               <label id="folders-label">Folders it can use</label>
               {!runsOn ? (
-                <small className="dim">Glyphh cloud has no folders. Choose a rrotor to give it files.</small>
+                <small className="dim">Glyphh cloud has no folders. To give it files, choose a rrotor under Where it runs.</small>
               ) : (
                 <>
                   <ul className="approws" aria-labelledby="folders-label">
@@ -476,7 +388,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
 
               <label id="asks-label">Before it acts</label>
               <div className="modes" role="radiogroup" aria-labelledby="asks-label">
-                {ASKS.map((m) => (
+                {MODES.map((m) => (
                   <button key={m.value} type="button" role="radio" aria-checked={mode === m.value} className={mode === m.value ? 'mode on' : 'mode'} onClick={() => setMode(m.value)}>
                     <b>{m.label}</b>
                     <small>{m.hint}</small>
@@ -532,8 +444,20 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
                 </label>
               )}
 
-              <h3>Voice and model</h3>
-              <div className="two voice-model">
+              <h3>Where it runs</h3>
+              <label>
+                <select aria-label="Where it runs" value={runsOn ?? ''} onChange={(e) => moveTo(e.target.value || null)}>
+                  {everywhere.map((p) => (
+                    <option key={p.id ?? ''} value={p.id ?? ''} disabled={!p.linked && p.id !== runsOn}>
+                      {p.linked ? p.name : `${p.name} (offline)`}
+                    </option>
+                  ))}
+                </select>
+                <small>{runsOn ? 'On that machine, through its rrotor, so it can use the folders you choose there.' : 'On Glyphh. Nothing to install.'}</small>
+              </label>
+
+              <h3>Voice, model and effort</h3>
+              <div className="three voice-model">
                 <label>
                   Voice
                   <div className="row">
@@ -560,6 +484,16 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
                     ))}
                   </select>
                 </label>
+                <label>
+                  Effort
+                  <select value={chosenEffort} onChange={(e) => setEffort(e.target.value)}>
+                    {effortOptions(chosenEffort).map((e) => (
+                      <option key={e.value} value={e.value}>
+                        {e.label.replace(' effort', '')}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
 
@@ -571,12 +505,9 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
                     <button
                       type="button"
                       className="link"
-                      onClick={() => {
-                        onClose();
-                        shell.openPanel('gates');
-                      }}
+                      onClick={() => shell.openDecisions()}
                     >
-                      See what it has learned
+                      See its decisions
                     </button>
                   )}
                 </p>
@@ -610,7 +541,6 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; advanced?: boolea
       <div className="gb-plain" data-theme="dark-hc">
         <DescribeMascotModal open={describing} look={look} onClose={() => setDescribing(false)} onUse={setMascot} />
       </div>
-      {open && openScope && <ChooseTools connection={open} scope={openScope} onChange={(tools) => setTools(open.id, tools)} onClose={() => setChoosing(null)} />}
       {picking && place && (
         <FolderPicker place={place} taken={folders.map((f) => f.path)} onAdd={(path) => setFolders((all) => (all.some((f) => f.path === path) ? all : [...all, { path, access: 'read' }]))} onClose={() => setPicking(false)} />
       )}

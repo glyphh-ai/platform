@@ -8,12 +8,18 @@ export const whoWords: Record<Who, string> = { ada: 'Ada', you: 'You', default: 
 
 /** Why the person was asked, when they were. */
 export const modeWords: Record<string, string> = {
-  new: 'no precedents yet',
-  few: 'too few precedents',
+  new: 'nothing like it before',
+  few: 'too few like it before',
   unsure: 'Ada was unsure',
-  audit: 'an audit',
-  shadow: 'shadow',
+  audit: 'a spot check',
+  shadow: 'a trial',
 };
+
+/** What a bot decides, by the name it was given, as words: `reply_tone` as `Reply tone`. */
+export function topic(name: string): string {
+  const words = name.replace(/[_-]+/g, ' ').trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : name;
+}
 
 /** The outcomes it could be instead of what it is now. */
 export const others = (d: Decision) => d.outcomes.filter((o) => o !== d.now);

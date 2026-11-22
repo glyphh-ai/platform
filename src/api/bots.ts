@@ -44,6 +44,8 @@ export type Bot = {
   instructions: string;
   model: string;
   permission_mode?: PermissionMode;
+  /** How hard it thinks: low, medium (the default) or high. */
+  effort?: Effort;
   voice?: string;
   spec: BotSpec;
   skills: Record<string, string>;
@@ -88,7 +90,9 @@ export type BotModel = {
   own_key_output_cents_per_mtok: number;
   default: boolean;
 };
-export type BotModels = { models: BotModel[]; markup_pct: number };
+/** How hard a bot thinks before it answers. */
+export type Effort = string;
+export type BotModels = { models: BotModel[]; markup_pct: number; /** The effort levels every bot model takes, and the one a new bot starts on. */ efforts?: Effort[]; default_effort?: Effort };
 export type BatchItem = { n: number; label: string; [k: string]: unknown };
 export type Question = { question: string; options: string[]; batch: BatchItem[] | null; answer_with: string | null };
 export type BotRun = {
@@ -159,6 +163,7 @@ export type NewBot = {
   instructions: string;
   model?: string;
   permission_mode?: PermissionMode;
+  effort?: Effort;
   voice?: string;
   spec?: BotSpec;
   skills?: Record<string, string>;

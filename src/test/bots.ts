@@ -68,6 +68,8 @@ const model = (n: number, name: string, input: number, output: number, isDefault
 /** Twelve models: more than one page of the picker. */
 export const botModels: BotModels = {
   markup_pct: 20,
+  efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+  default_effort: 'medium',
   models: [
     model(1, 'Sonnet 5.5', 300, 1500, true),
     model(2, 'Haiku 5.5', 100, 500),
@@ -202,6 +204,7 @@ export const places = (): Place[] => [
 /** The Studio Mac's rrotor, at its own address: the browser asks it for its folders (`GET /v1/folders?under=`). */
 export const studioUrl = 'https://studio-mac.rrotor.test';
 const home = '/Users/chris';
+/** With no `under`: the folders the machine's owner shares with bots. */
 const studioFolders: Record<string, string[]> = {
   '': ['Desktop', 'Documents', 'Downloads'],
   [`${home}/Documents`]: ['Invoices', 'Contracts'],
@@ -301,7 +304,15 @@ export function botsFake({
     http.get(v1('/bots/models'), () => HttpResponse.json(botModels)),
     http.get(v1('/bots/voices'), () => HttpResponse.json(botVoices)),
     http.get(v1('/bots/places'), () => HttpResponse.json({ places: places() })),
+    // A short ticket for one machine, then the machine itself asked with it (never Glyphh's own sign-in).
+    http.post(v1('/bots/places/:id/ticket'), ({ params }) => {
+      const place = places().find((p) => p.id === params.id);
+      if (!place?.url) return apiError(422, 'E_INVALID', 'That is not one of your rrotors.', { reason: 'runs_on' });
+      state.seen.push(`ticket ${place.id}`);
+      return HttpResponse.json({ token: `ticket-${place.id}`, expires_in: 600, url: place.url });
+    }),
     http.get(`${studioUrl}/v1/folders`, ({ request }) => {
+      if (request.headers.get('authorization') !== 'Bearer ticket-rr-studio') return HttpResponse.json({ error: { code: 'E_UNAUTHORIZED', message: 'No ticket.' } }, { status: 401 });
       const under = new URL(request.url).searchParams.get('under') ?? '';
       state.seen.push(`folders ${under}`);
       return HttpResponse.json({ folders: machineFolders(under) });

@@ -51,20 +51,22 @@ type Props = {
   sending?: boolean;
   onSend: (text: string) => void;
   onStop?: () => void;
-  /** The row of small pills under the bar. */
+  /** The three small pills under the bar, at its bottom right: Model, Effort, Permission mode. Nothing else goes here. */
   children: ReactNode;
   /** Why nothing can be sent right now, said under the bar. */
   note?: ReactNode;
   focusKey: string;
-  /** Send works with nothing typed (a project's crew then works from its instructions); Enter still needs words. */
+  /** Send works with nothing typed (the crew then works from the repository's own instructions); Enter still needs words. */
   allowEmpty?: boolean;
+  /** Nothing can be sent yet (the note says why). */
+  off?: boolean;
 };
 
 /**
  * The composer, as the Glyphh Bot app's: + (a text file's words join the task), the box that grows with what is typed,
  * the mic (the browser's own dictation, where it has one) and Send, or Stop while a run is going; under it the pills.
  */
-export function Composer({ hero, placeholder, busy, sending, onSend, onStop, children, note, focusKey, allowEmpty }: Props) {
+export function Composer({ hero, placeholder, busy, sending, onSend, onStop, children, note, focusKey, allowEmpty, off }: Props) {
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -86,7 +88,7 @@ export function Composer({ hero, placeholder, busy, sending, onSend, onStop, chi
   }, [text]);
 
   const go = (empty = false) => {
-    if ((!text.trim() && !empty) || busy || sending) return;
+    if ((!text.trim() && !empty) || busy || sending || off) return;
     onSend(text.trim());
     setText('');
   };
@@ -164,16 +166,18 @@ export function Composer({ hero, placeholder, busy, sending, onSend, onStop, chi
           <button
             type="button"
             className="send"
-            title={allowEmpty && !text.trim() ? 'Send nothing: the crew works from the instructions' : 'Send'}
+            title={allowEmpty && !text.trim() ? 'Send nothing: the crew works from the repository’s own instructions' : 'Send'}
             aria-label="Send"
             onClick={() => go(allowEmpty)}
-            disabled={(!text.trim() && !allowEmpty) || busy || sending}
+            disabled={(!text.trim() && !allowEmpty) || busy || sending || off}
           >
             ↑
           </button>
         )}
       </div>
-      <div className="controls">{children}</div>
+      <div className="controls" role="group" aria-label="For this chat">
+        {children}
+      </div>
       {note && <p className="cnote">{note}</p>}
     </div>
   );

@@ -42,9 +42,86 @@ img.cat-svg.mascot { object-fit: contain; }
 .cnote { margin: 8px 2px 0; color: var(--text-4); font: 400 12px var(--sans); }
 .composer.hero .cnote { text-align: center; }
 .cnote a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-/* A pill whose words are shown whole (the turn mode: "Orchestrator: <a bot's name>"), and the pills wrap for it. */
+/* The three pills under the composer (model, effort, permission mode) sit at its bottom right, here and on the hero. */
 .ctl.sel.wide span:not(.dim) { max-width: none; }
-.controls { flex-wrap: wrap; }
+.controls, .composer.hero .controls { flex-wrap: wrap; justify-content: flex-end; }
+.ctl.sel span:not(.dim) { max-width: 190px; }
+
+/* The top bar: the workspace's menu, Recents with its search and its dot, the "Needs you" chip. */
+.panels.bare { width: auto; }
+.dwho { margin-left: 10px; height: 22px; padding: 0 6px; font: 500 11px var(--sans); color: var(--text-2); background: var(--surface-2); border: 1px solid var(--hair); border-radius: 6px; }
+.wsmenu-panel { width: 340px; max-height: min(620px, calc(100vh - 110px)); overflow-y: auto; z-index: 41; }
+.wsmenu-panel .rlabel { padding: 8px 8px 4px; }
+.wsmenu-panel .pad { margin: 0; padding: 4px 8px 8px; font-size: 12.5px; line-height: 1.45; }
+.wsmenu-panel .wsname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wsmenu-panel .branch { font: 500 11px var(--mono); color: var(--text-4); }
+.wsmenu-panel button.btn.wsconnect { justify-content: center; margin: 2px 6px 6px; color: #000; background: #fff; font-weight: 600; }
+.wsmenu-panel button.btn.wsconnect:hover { background: var(--text-2); color: #000; }
+.wsline { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.wsline b { color: var(--text); font-weight: 600; }
+.wsline a, .wsmenu-panel .err a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.wsmenu-panel > input { margin: 0 6px 4px; width: auto; height: 30px; font-size: 12.5px; }
+.wsrepos { display: flex; flex-direction: column; gap: 1px; max-height: 220px; overflow-y: auto; }
+.wsbranch { display: flex; flex-direction: column; }
+.wsbranch .row { padding: 0 6px 6px; gap: 6px; }
+.wsbranch input { flex: 1; min-width: 0; height: 28px; margin: 0; font: 500 12px var(--mono); }
+.wsbranch .btn.sm { padding: 0 10px; justify-content: center; }
+.recents { display: flex; align-items: center; gap: 8px; }
+.chip.needs { color: #000; background: #fff; border-color: #fff; font-weight: 600; white-space: nowrap; }
+.chip.needs .led { width: 6px; height: 6px; border-radius: 50%; background: #000; }
+.chip.needs.on { background: var(--text-2); border-color: var(--text-2); color: #000; }
+.rsearch { flex: none; display: flex; align-items: center; gap: 8px; margin: 8px 10px 2px; padding: 0 10px; height: 30px; border: 1px solid var(--hair); border-radius: 8px; background: var(--bg); color: var(--text-4); }
+.rsearch:focus-within { border-color: var(--rail); }
+.rsearch input { flex: 1; min-width: 0; height: 28px; padding: 0; border: 0; background: none; box-shadow: none; font: 400 13px var(--sans); }
+.rsearch input:focus { box-shadow: none; outline: none; }
+.rdot { flex: none; width: 7px; height: 7px; margin: 0 4px; border-radius: 50%; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.6); }
+.menuveil { z-index: 94; }
+.rarch { width: 100%; }
+
+/* The rail: the crew card (its line, a small edit, the cats to tick), a bot's "Needs you". */
+.bot.crew { flex-direction: column; align-items: stretch; gap: 8px; cursor: default; }
+.crewtop { display: flex; align-items: center; gap: 8px; }
+.crewtop .meta { color: inherit; text-decoration: none; }
+.crewcats { display: flex; flex-wrap: wrap; gap: 4px; }
+.mini.tick { margin-left: 0; width: 30px; height: 30px; padding: 0; cursor: pointer; border-color: var(--hair); opacity: 0.38; filter: grayscale(1); transition: opacity 0.12s, border-color 0.12s; }
+.mini.tick:hover:not(:disabled) { opacity: 0.8; }
+.mini.tick.on { opacity: 1; border-color: #fff; }
+.mini.tick:disabled { cursor: default; }
+.meta b i.needs { padding: 1px 6px; border-radius: 999px; background: #fff; color: #000; font: 600 9.5px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* Connections: the catalog's cards, a connection's facts. */
+.modal h2 { display: flex; align-items: center; gap: 10px; }
+.connfacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 12px; }
+.connfacts dt { font: 500 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-4); }
+.connfacts dd { margin: 3px 0 0; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.connfoot { margin-top: 16px; align-items: center; }
+.catsearch { width: 100%; margin-bottom: 10px; }
+.catalog { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: min(52vh, 460px); overflow-y: auto; }
+.catalog > li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); }
+.catalog > li.dim { grid-column: 1 / -1; border: 0; background: none; font-size: 12.5px; }
+.catalog .appname b { color: #fff; }
+.catalog .btn.add { width: 26px; padding: 0; justify-content: center; font-size: 15px; }
+.connecting p { margin: 0 0 8px; }
+.connecting a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Crew settings: the cats to pick, a line with a switch. */
+.pickcats { display: flex; flex-wrap: wrap; gap: 6px; }
+.pickcat { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border: 1px solid var(--hair); border-radius: 999px; background: var(--bg); color: var(--text-4); font: 500 13px var(--sans); }
+.pickcat .mini { margin-left: 0; width: 34px; height: 34px; opacity: 0.45; }
+.pickcat.on { border-color: #fff; color: #fff; }
+.pickcat.on .mini { opacity: 1; }
+.modes.two-up { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.switchrow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); }
+.switchrow span { display: flex; flex-direction: column; gap: 3px; }
+.switchrow b { font: 600 13px var(--sans); color: #fff; }
+.switchrow small { font-size: 12px; color: var(--text-4); }
+.form .two label { min-width: 0; }
+
+/* The editor's apps: on/off pills with the app's own icon. */
+.pill.app { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; font: 500 12px var(--sans); cursor: pointer; }
+.pill.app .cicon { border-radius: 3px; }
+.pill.app.add { padding-left: 10px; border-style: dashed; color: var(--text-3); }
+.three { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 12px; }
 button.ctl { cursor: pointer; }
 button.ctl:disabled { cursor: default; }
 button.chip { cursor: pointer; }
@@ -182,7 +259,10 @@ button.chip { cursor: pointer; }
   .editside > .form { overflow: visible; padding-right: 0; margin-right: 0; }
   .modes { grid-template-columns: minmax(0, 1fr); }
   .approws > li { flex-wrap: wrap; }
-  .two, .two.voice-model { grid-template-columns: minmax(0, 1fr); }
+  .two, .two.voice-model, .three, .catalog, .modes.two-up, .connfacts { grid-template-columns: minmax(0, 1fr); }
+  .rpanel { position: fixed; top: 56px; left: 8px; right: 8px; width: auto; }
+  .wsmenu-panel { position: fixed; top: 56px; left: 8px; right: 8px; width: auto; }
+  .chip.needs { padding: 0 9px; }
   .looks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drow, .dtable.wide .drow { grid-template-columns: minmax(0, 1fr) auto; }
   .drow.dcols, .dwhen { display: none; }

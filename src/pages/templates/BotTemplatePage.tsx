@@ -6,7 +6,6 @@ import { Cat } from '@/bots/cat/Cat';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
 import { List, Row } from '@/components/List';
 import { Button, Card, Chip, EmptyState, Icon, LoadingCard, panelId, tabId, Tabs, useToast } from '@/ui';
-import { useConnect } from '../connections/useConnect';
 import styles from './templates.module.css';
 
 type Tab = 'overview' | 'tools';
@@ -27,42 +26,33 @@ function useMissing(template: BotTemplate) {
   return { ready: connections.isSuccess, missing: connections.isSuccess ? template.required_apps.filter((a) => !have.has(a.slug)) : [] };
 }
 
-/**
- * The services it needs, each said as connected or with Connect, which signs in right here (Pipedream's popup, the
- * spinner) and leaves the person on this page, its Add now open to them.
- */
+/** Where apps are connected: the Bots area's CONNECTIONS, the one place for them, its catalog open. */
+const CONNECT = '/bots?rail=connections&add=1';
+
+/** The services it needs, each said as connected or not; one that is not is connected in Bots, under Connections. */
 function Needs({ template }: { template: BotTemplate }) {
   const { missing } = useMissing(template);
-  const { connect, connecting, error, dialog } = useConnect({ onConnected: () => undefined });
   const away = new Set(missing.map((a) => a.slug));
   if (template.required_apps.length === 0) return <p className={styles.sectionAbout}>It needs no connection.</p>;
   return (
-    <>
-      <List label="Connections it needs">
-        {template.required_apps.map((app) => (
-          <Row
-            key={app.slug}
-            title={
-              <Link to={`/connections/${encodeURIComponent(app.slug)}`} className={styles.open}>
-                {app.name}
+    <List label="Connections it needs">
+      {template.required_apps.map((app) => (
+        <Row
+          key={app.slug}
+          title={app.name}
+          meta={away.has(app.slug) ? 'Not connected yet' : 'Connected'}
+          actions={
+            away.has(app.slug) ? (
+              <Link to={CONNECT} className={styles.open}>
+                Connect it in Bots
               </Link>
-            }
-            meta={away.has(app.slug) ? 'Not connected yet' : 'Connected'}
-            actions={
-              away.has(app.slug) ? (
-                <Button size="sm" variant="secondary" icon="plus" loading={connecting === app.slug} onClick={() => connect({ ...app, description: null })}>
-                  Connect
-                </Button>
-              ) : (
-                <Chip tone="green">Connected</Chip>
-              )
-            }
-          />
-        ))}
-      </List>
-      <ApiErrorNotice error={error} />
-      {dialog}
-    </>
+            ) : (
+              <Chip tone="green">Connected</Chip>
+            )
+          }
+        />
+      ))}
+    </List>
   );
 }
 

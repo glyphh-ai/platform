@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useDecisions, useRelabel, useConfirm, type Decision, type DecisionQuery, type DecisionSort, type Who } from '@/api/botDecisions';
+import { useDecisions, useDecisionStats, useRelabel, useConfirm, type Decision, type DecisionQuery, type DecisionSort, type Who } from '@/api/botDecisions';
 import { ApiErrorNotice } from '@/components/ApiErrorNotice';
+import { plural } from '@/lib/format';
 import { Button, Skeleton, useToast } from '@/ui';
 import { DecisionDrawer } from './DecisionDrawer';
 import { OutcomePill } from './OutcomePill';
 import { RightWrong } from './RightWrong';
-import { pct, when, whoWords } from './words';
+import { pct, topic, when, whoWords } from './words';
 import styles from './decisions.module.css';
 
 const PAGE = 25;
 type Filters = { gate?: string; outcome?: string; who?: Who; corrected?: boolean };
 const columns: Array<{ id: DecisionSort | null; label: string }> = [
   { id: null, label: 'Item' },
-  { id: 'gate', label: 'Gate' },
+  { id: 'gate', label: 'Deciding' },
   { id: 'outcome', label: 'Outcome' },
   { id: null, label: 'Who' },
   { id: 'confidence', label: 'Confidence' },
@@ -44,8 +45,8 @@ function Chips({ filters, gates, set }: { filters: Filters; gates: Record<string
   const flip = <K extends keyof Filters>(key: K, value: Filters[K]) => set({ ...filters, [key]: filters[key] === value ? undefined : value });
   return (
     <div className={styles.chips} role="group" aria-label="Filters">
-      {names.length > 1 && <span className={styles.label}>Gate</span>}
-      {names.length > 1 && names.map((g) => <FilterChip key={g} on={filters.gate === g} label={g} onToggle={() => set({ ...filters, gate: filters.gate === g ? undefined : g, outcome: undefined })} />)}
+      {names.length > 1 && <span className={styles.label}>Deciding</span>}
+      {names.length > 1 && names.map((g) => <FilterChip key={g} on={filters.gate === g} label={topic(g)} onToggle={() => set({ ...filters, gate: filters.gate === g ? undefined : g, outcome: undefined })} />)}
       <span className={styles.label}>Outcome</span>
       {outcomes.map((o) => (
         <FilterChip key={o} on={filters.outcome === o} label={o} onToggle={() => flip('outcome', o)} />
@@ -66,8 +67,9 @@ function Bulk({ slug, chosen, outcomes, done }: { slug: string; chosen: Decision
   const relabel = useRelabel(slug);
   const confirm = useConfirm(slug);
   const ids = chosen.map((d) => d.id);
-  const ok = (r: { said: string }) => {
-    toast.show(`${r.said}.`);
+  // Said in the screen's own words: the server's sentence names its insides.
+  const ok = (words: string) => () => {
+    toast.show(words);
     done();
   };
   const oneGate = new Set(chosen.map((d) => d.gate)).size === 1;
@@ -78,16 +80,16 @@ function Bulk({ slug, chosen, outcomes, done }: { slug: string; chosen: Decision
         <>
           <span className={styles.label}>Relabel as</span>
           {outcomes.map((o) => (
-            <Button key={o} size="sm" variant="secondary" loading={relabel.isPending && relabel.variables?.outcome === o} onClick={() => relabel.mutate({ ids, outcome: o }, { onSuccess: ok })}>
+            <Button key={o} size="sm" variant="secondary" loading={relabel.isPending && relabel.variables?.outcome === o} onClick={() => relabel.mutate({ ids, outcome: o }, { onSuccess: ok(`Ada learned ${plural(ids.length, 'decision')} as ${o}.`) })}>
               {o}
             </Button>
           ))}
-          <Button size="sm" variant="secondary" loading={confirm.isPending} onClick={() => confirm.mutate(ids, { onSuccess: ok })}>
+          <Button size="sm" variant="secondary" loading={confirm.isPending} onClick={() => confirm.mutate(ids, { onSuccess: ok(`Kept ${plural(ids.length, 'decision')} as right.`) })}>
             All right
           </Button>
         </>
       ) : (
-        <span className={styles.muted}>Choose decisions of one gate to relabel them together.</span>
+        <span className={styles.muted}>Choose decisions about one thing to relabel them together.</span>
       )}
       <Button size="sm" variant="ghost" onClick={done}>
         Clear
@@ -98,10 +100,33 @@ function Bulk({ slug, chosen, outcomes, done }: { slug: string; chosen: Decision
 }
 
 /**
- * A bot's decisions to read and train it from, for a side panel: one row per item per gate per run, its readable
- * label, gate, outcome, who decided, Ada's confidence and when, with Right and Wrong on each; searched, filtered by
- * chips, sorted by its column heads, paged, and chosen many at once to relabel together. A row's item opens it in a
- * drawer with its fields and the precedents behind it. `runId` shows one run's alone.
+ * What the bot decides, a slim line each: "Urgency · decided 129 times · asks you 18% · right 87% when it asked".
+ * Nothing when it has decided nothing yet.
+ */
+function Summary({ slug }: { slug: string }) {
+  const stats = useDecisionStats(slug);
+  const lines = (stats.data ?? []).filter((g) => g.decisions > 0);
+  if (lines.length === 0) return null;
+  return (
+    <ul className={styles.summary} aria-label="What it decides">
+      {lines.map((g) => (
+        <li key={g.gate}>
+          <b>{topic(g.gate)}</b>
+          <span>decided {plural(g.decisions, 'time')}</span>
+          {g.ask_rate !== null && <span>asks you {pct(g.ask_rate)}</span>}
+          {g.agreement !== null && <span>right {pct(g.agreement)} when it asked</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * A bot's decisions to read and train it from, the one place for them beside the chat's own turns: a slim line per
+ * thing it decides, then one row per decision (its readable label, what it was deciding, the outcome, who decided,
+ * Ada's confidence and when) with Right and Wrong on each; searched, filtered by chips, sorted by its column heads,
+ * paged, and chosen many at once to relabel together. A row's item opens it in a drawer with its fields and the
+ * cases it matched. `runId` shows one run's alone.
  */
 export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }) {
   const [words, setWords] = useState('');
@@ -126,6 +151,7 @@ export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }
   const first = cursors.length * PAGE + 1;
   return (
     <div className={styles.panel}>
+      {!runId && <Summary slug={slug} />}
       <label className={styles.search}>
         <span className={styles.label}>Search</span>
         <input type="search" value={words} placeholder="A title, a sender, a word in it…" aria-label="Search decisions" onChange={(e) => setWords(e.target.value)} />
@@ -179,7 +205,7 @@ export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }
                     {d.label}
                   </button>
                 </td>
-                <td className={styles.mono}>{d.gate}</td>
+                <td className={styles.mono}>{topic(d.gate)}</td>
                 <td>
                   <OutcomePill decision={d} />
                 </td>
@@ -194,7 +220,7 @@ export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }
           </tbody>
         </table>
         {page.data && rows.length === 0 && (
-          <p className={styles.empty}>{q || Object.values(filters).some((v) => v !== undefined) ? 'No decision matches.' : 'No decisions yet: its gates decide when it runs.'}</p>
+          <p className={styles.empty}>{q || Object.values(filters).some((v) => v !== undefined) ? 'No decision matches.' : 'No decisions yet: they show here once it has run.'}</p>
         )}
       </div>
       {page.data && page.data.total > 0 && (
