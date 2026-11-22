@@ -208,7 +208,7 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     expect(await within(panel).findByRole('list', { name: 'What it decides' })).toHaveTextContent('Easydecided 129 timesasks you 18%right 87% when it asked');
     const every = within(panel).getByRole('table', { name: 'Every decision' });
     await waitFor(() => expect(within(every).getAllByRole('row')).toHaveLength(3));
-    expect(within(every).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['', 'Item', 'Deciding', 'Outcome', 'Who', 'Confidence', 'Time↓', 'Train']);
+    expect(within(every).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['', 'Item', 'Outcome', 'Who', 'Confidence', 'Time↓', 'Train']);
     // The chat is still there beside it; closing it leaves only the chat.
     expect(screen.getByRole('textbox', { name: 'Give Inbox helper a task…' })).toBeInTheDocument();
     await user.click(within(panel).getByRole('button', { name: 'Close Decisions' }));

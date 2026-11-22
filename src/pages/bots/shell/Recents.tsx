@@ -217,7 +217,7 @@ export function Recents({ bots, needsYou, focus, onPick, onNew }: Props) {
   useEscape(() => !document.querySelector('.gb .veil.front') && setOpen(null), open !== null);
   return (
     <div className="recents">
-      <button type="button" className={`chip ${open === 'all' ? 'on' : ''}`} title="Past chats" aria-expanded={open === 'all'} onClick={() => setOpen(open === 'all' ? null : 'all')}>
+      <button type="button" className={`chip ${open === 'all' ? 'on' : ''}`} title="Past chats" aria-label="Recents" aria-expanded={open === 'all'} onClick={() => setOpen(open === 'all' ? null : 'all')}>
         <Icon d={ICON.recents} size={14} /> <span className="chiptext">Recents</span> <span className="dim">▾</span>
       </button>
       {needsYou > 0 && (

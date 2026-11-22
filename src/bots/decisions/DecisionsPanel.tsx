@@ -171,7 +171,8 @@ export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }
                   onChange={(e) => setChosen(new Set(e.target.checked ? rows.map((d) => d.id) : []))}
                 />
               </th>
-              {columns.map((c) => (
+              {/* What it was deciding is a column only when the bot decides more than one thing. */}
+              {columns.filter((c) => c.id !== 'gate' || Object.keys(gates).length > 1).map((c) => (
                 <th key={c.label} aria-sort={c.id && sort.by === c.id ? (sort.order === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {c.id ? (
                     <button type="button" className={styles.sort} data-on={sort.by === c.id} onClick={() => sortBy(c.id!)}>
@@ -205,7 +206,7 @@ export function DecisionsPanel({ slug, runId }: { slug: string; runId?: string }
                     {d.label}
                   </button>
                 </td>
-                <td className={styles.mono}>{topic(d.gate)}</td>
+                {Object.keys(gates).length > 1 && <td className={styles.mono}>{topic(d.gate)}</td>}
                 <td>
                   <OutcomePill decision={d} />
                 </td>

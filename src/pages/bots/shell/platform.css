@@ -67,6 +67,11 @@ img.cat-svg.mascot { object-fit: contain; }
 .wsbranch input { flex: 1; min-width: 0; height: 28px; margin: 0; font: 500 12px var(--mono); }
 .wsbranch .btn.sm { padding: 0 10px; justify-content: center; }
 .recents { display: flex; align-items: center; gap: 8px; }
+/* Recents' own head and list (a run's readable steps, further down, use the same two names). */
+.rpanel .rhead { align-items: center; margin: 0; }
+.rpanel .rhead b { font: 600 14px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text); }
+.rpanel .rlist { margin: 0; padding: 4px 6px 8px; }
+.bot.speaking .meta small { color: var(--text-4); font: 400 12px var(--sans); text-transform: none; letter-spacing: 0; }
 .chip.needs { color: #000; background: #fff; border-color: #fff; font-weight: 600; white-space: nowrap; }
 .chip.needs .led { width: 6px; height: 6px; border-radius: 50%; background: #000; }
 .chip.needs.on { background: var(--text-2); border-color: var(--text-2); color: #000; }
@@ -100,7 +105,7 @@ img.cat-svg.mascot { object-fit: contain; }
 .catalog > li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); }
 .catalog > li.dim { grid-column: 1 / -1; border: 0; background: none; font-size: 12.5px; }
 .catalog .appname b { color: #fff; }
-.catalog .btn.add { width: 26px; padding: 0; justify-content: center; font-size: 15px; }
+.catalog .btn.plus { width: 26px; padding: 0; justify-content: center; font-size: 15px; }
 .connecting p { margin: 0 0 8px; }
 .connecting a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -118,9 +123,9 @@ img.cat-svg.mascot { object-fit: contain; }
 .form .two label { min-width: 0; }
 
 /* The editor's apps: on/off pills with the app's own icon. */
-.pill.app { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; font: 500 12px var(--sans); cursor: pointer; }
-.pill.app .cicon { border-radius: 3px; }
-.pill.app.add { padding-left: 10px; border-style: dashed; color: var(--text-3); }
+.apppill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; font: 500 12px var(--sans); cursor: pointer; }
+.apppill .cicon { border-radius: 3px; }
+.apppill.more { padding-left: 10px; border-style: dashed; color: var(--text-3); }
 .three { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 12px; }
 button.ctl { cursor: pointer; }
 button.ctl:disabled { cursor: default; }

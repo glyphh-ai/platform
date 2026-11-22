@@ -39,7 +39,7 @@ describe('the Decisions panel', () => {
     const t = await table();
     await waitFor(() => expect(bodyRows(t)).toHaveLength(25));
     expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30');
-    expect(bodyRows(t)[0]).toHaveTextContent('Easyleave');
+    expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30leave');
     expect(screen.getByRole('navigation', { name: 'Pages' })).toHaveTextContent('1–25 of 30');
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(bodyRows(t)).toHaveLength(5));
@@ -85,7 +85,7 @@ describe('the Decisions panel', () => {
     await user.click(within(bulk).getByRole('button', { name: 'answer' }));
     await waitFor(() => expect(fake.state.bodies.at(-1)).toEqual({ ids: ['d-30', 'd-29'], outcome: 'answer' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Chosen decisions' })).not.toBeInTheDocument());
-    await waitFor(() => expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30Easyleaveanswer'));
+    await waitFor(() => expect(bodyRows(t)[0]).toHaveTextContent('Newsletter 30leaveanswer'));
     expect(await screen.findByText('Ada learned 2 decisions as answer.')).toBeInTheDocument();
     await user.click(within(t).getByRole('checkbox', { name: 'Choose every decision on this page' }));
     await user.click(within(screen.getByRole('region', { name: 'Chosen decisions' })).getByRole('button', { name: 'All right' }));

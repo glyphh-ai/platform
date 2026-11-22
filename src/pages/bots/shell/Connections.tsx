@@ -247,7 +247,7 @@ function Catalog({ onClose, onConnected }: { onClose: () => void; onConnected: (
                 </span>
                 <button
                   type="button"
-                  className="btn tiny add"
+                  className="btn tiny plus"
                   aria-label={have.has(a.slug) ? `Add another ${a.name} account` : `Connect ${a.name}`}
                   title={have.has(a.slug) ? 'Add another account' : 'Connect'}
                   disabled={link.isPending}

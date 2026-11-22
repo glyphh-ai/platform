@@ -345,13 +345,13 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
                 {(connections.data ?? []).map((c) => {
                   const on = scopes.some((s) => s.connection_id === c.id);
                   return (
-                    <button key={c.id} type="button" aria-pressed={on} className={on ? 'pill app on' : 'pill app'} title={`${c.app_name}${c.label ? ` · ${c.label}` : ''}: ${on ? 'it can use it' : 'it cannot use it'}`} onClick={() => void toggle(c.id)}>
+                    <button key={c.id} type="button" aria-pressed={on} className={on ? 'pill apppill on' : 'pill apppill'} title={`${c.app_name}${c.label ? ` · ${c.label}` : ''}: ${on ? 'it can use it' : 'it cannot use it'}`} onClick={() => void toggle(c.id)}>
                       <ConnectorIcon name={c.app_name} icon={c.app_icon} size={14} />
                       {c.app_name}
                     </button>
                   );
                 })}
-                <button type="button" className="pill app add" onClick={() => shell.openConnections(true)}>
+                <button type="button" className="pill apppill more" onClick={() => shell.openConnections(true)}>
                   + Connect an app
                 </button>
               </div>
