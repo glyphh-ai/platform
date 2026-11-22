@@ -200,7 +200,7 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     // After the spacer: edit, then Decisions. No "Ada gates", no Tools; no work panels on Glyphh cloud.
     const right = Array.from(bar.querySelectorAll('.spacer ~ *'));
     expect(right.map((el) => el.getAttribute('aria-label'))).toEqual(['Edit Inbox helper', 'Decisions']);
-    expect(bar.querySelector('[data-slot="work-icons"]')).toBeNull();
+    expect(within(bar).queryByRole('toolbar', { name: 'Work panels' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
     await user.click(within(bar).getByRole('button', { name: 'Decisions' }));
     const panel = await screen.findByRole('region', { name: 'Decisions' });
@@ -216,13 +216,15 @@ describe('the Bots area, as the Glyphh Bot app', () => {
     expect(screen.queryByRole('region', { name: /gates|Tools/i })).not.toBeInTheDocument();
   });
 
-  it('keeps the mount point for the work panels for a bot on a rrotor only', async () => {
+  it('has the work panels’ icons in the top bar for a bot on a rrotor only, and no panel until one is opened', async () => {
     on({ bots: [inbox({ runs_on: 'rr-studio' })] });
     renderApp('/bots/inbox-helper');
     const bar = await screen.findByRole('banner');
     await within(bar).findByRole('button', { name: 'Edit Inbox helper' });
-    expect(bar.querySelector('[data-slot="work-icons"]')).not.toBeNull();
-    expect(document.querySelector('[data-slot="work-panels"]')).not.toBeNull();
+    // The work panels (shell/work) mount here: Files, Preview, Terminal, Editor, Diff, then the layouts.
+    const tools = await within(bar).findByRole('toolbar', { name: 'Work panels' });
+    expect(within(tools).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Files', 'Preview', 'Terminal', 'Editor', 'Diff', 'Layouts']);
+    for (const name of ['Files', 'Preview', 'Terminal', 'Editor', 'Diff']) expect(screen.queryByRole('region', { name })).not.toBeInTheDocument();
   });
 
   it('lands an old link to a bot’s tab: what it learned as Decisions, its settings as the editor', async () => {

@@ -19,6 +19,7 @@ import { BotEditor } from './Editor';
 import { Icon, ICON, Reactor } from './icons';
 import { Rail, type RailTab } from './Rail';
 import { Recents } from './Recents';
+import { WorkPanelHost, WorkPanelIcons, WorkProvider } from './work';
 import { WorkspacePill } from './Workspace';
 import './glyphh-bot.css';
 import './platform.css';
@@ -174,6 +175,8 @@ export function BotsShell() {
     <ShellContext.Provider value={api}>
       <div className="gb">
         <div className="app">
+          {/* The work panels' state, around the top bar and the body (its children keep their indent: a mount, not a rewrite). */}
+          <WorkProvider runsOn={runsOn} runId={focus}>
           <header className="top">
             <button type="button" className="icon onphone" aria-label="Menu" onClick={nav.toggleSidebar}>
               <Icon d={ICON.menu} size={16} />
@@ -212,7 +215,7 @@ export function BotsShell() {
               </button>
             )}
             {/* The work panels' icons (Files, Preview, Terminal, Editor, Diff and the layout manager) mount here, only on a rrotor. */}
-            {runsOn && <div className="pbtns" data-slot="work-icons" />}
+            {runsOn && <WorkPanelIcons />}
           </header>
 
           <main className="grid">
@@ -294,7 +297,7 @@ export function BotsShell() {
                       </Panel>
                     )}
                     {/* The rrotor's work panels (Files, Preview, Terminal, Editor, Diff) mount here. */}
-                    {runsOn && <div data-slot="work-panels" />}
+                    {runsOn && <WorkPanelHost />}
                   </div>
                 ) : null}
               </div>
@@ -312,6 +315,7 @@ export function BotsShell() {
               {toast}
             </div>
           )}
+          </WorkProvider>
         </div>
       </div>
     </ShellContext.Provider>

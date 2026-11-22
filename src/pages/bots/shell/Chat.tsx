@@ -32,17 +32,14 @@ import {
   type Review,
   type Turn,
 } from '@/api/projects';
-import { unescaped } from '@/bots/decisions/Markdown';
-import { noClaudeStep, RunData } from '@/bots/decisions/RunData';
-import { TurnDecisions } from '@/bots/decisions/TurnDecisions';
+import { noClaudeStep } from '@/bots/decisions/RunData';
 import { ago, dollars, plural, stamp } from '@/lib/format';
-import { BotCat, effortOptions, EFFORTS, RUN_WORDS, runSummary, shortModel } from './bits';
+import { BotCat, effortOptions, EFFORTS, RUN_WORDS, shortModel } from './bits';
 import { Composer, SelectChip } from './Composer';
 import type { Crew } from './crew';
-import { RunDecisions } from './Decisions';
 import { Icon, ICON, Reactor } from './icons';
-import { Markdown } from './Markdown';
 import { useNarration } from './narration';
+import { Rich, TurnBody } from './turn';
 
 /** When a bot must ask before it acts, as the pill and its settings say it. */
 export const MODES: ReadonlyArray<{ value: PermissionMode; label: string; hint: string }> = [
@@ -85,30 +82,6 @@ function useFollow(dep: unknown, focus: string | null) {
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   };
   return { scroller, onScroll };
-}
-
-/** The line that folds a turn's steps away: "Ran 4 steps, asked Ada 3 times". */
-function Steps({ summary, lines, live }: { summary: string; lines: string[]; live?: boolean }) {
-  const [open, setOpen] = useState(false);
-  if (lines.length === 0) return null;
-  return (
-    <div className={`tgroup ${open ? 'open' : ''}`}>
-      <button type="button" className="tsum" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon d={open ? ICON.collapse : ICON.expand} size={12} />
-        {live ? <span className="trun">{lines.at(-1)}</span> : <span>{summary}</span>}
-      </button>
-      {open && (
-        <div className="tools" aria-label="Steps">
-          {lines.map((line, i) => (
-            <div key={i} className={`tool ${live && i === lines.length - 1 ? 'run' : 'ok'}`} title={line}>
-              <span className="ti">•</span>
-              <span className="td">{line}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** What a run asks, as the bot asking: one option a button, or for many items each item's own; answered here. */
@@ -193,7 +166,6 @@ function BotTurn({ run: listed, bot, place }: { run: BotRun; bot: Bot; place: (i
   const live = useBotRun(working(listed.status) ? listed.id : null);
   const run = live.data?.id === listed.id ? live.data : listed;
   const going = working(run.status);
-  const over = run.status === 'done' || run.status === 'failed';
   const where = place(run.runs_on);
   return (
     <div id={`msg-${run.id}`} className="turnpair">
@@ -218,12 +190,7 @@ function BotTurn({ run: listed, bot, place }: { run: BotRun; bot: Bot; place: (i
               </span>
             )}
           </div>
-          <Steps summary={runSummary(run, bot.spec)} lines={run.log} live={going} />
-          <TurnDecisions slug={bot.slug} runId={run.id} over={over} fallback={<RunDecisions run={run} bot={bot} />} />
-          {run.output && <Markdown text={unescaped(run.output)} />}
-          {!going && <RunData run={run} spec={bot.spec} markdown={(text) => <Markdown text={text} />} />}
-          {run.status === 'needs_input' && <Ask run={run} bot={bot} />}
-          {run.error && <div className="err">{run.error}</div>}
+          <TurnBody run={run} bot={bot} going={going} ask={<Ask run={run} bot={bot} />} />
           {!going && (
             <small className="rmeta" title={stamp(run.created_at)}>
               {ago(run.created_at)} · {noClaudeStep(run, bot.spec) ? 'No Claude step ran' : `${plural(run.input_tokens + run.output_tokens, 'token')} · ${dollars(run.cost_micros)}`}
@@ -506,7 +473,7 @@ function CrewRun({ run: listed, bots }: { run: ProjectRun; bots: Bot[] }) {
                     </span>
                   )}
                 </div>
-                {t.said && <Markdown text={t.said} />}
+                {t.said && <Rich text={t.said} />}
                 {t.number !== null ? <PrCard turn={t} run={run} /> : t.status === 'unchanged' && !closing && <small className="rmeta">{t.said ? 'no changes' : 'passed · no changes'}</small>}
                 {t.error && <div className="err">{t.error}</div>}
               </div>
