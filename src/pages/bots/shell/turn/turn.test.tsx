@@ -133,6 +133,9 @@ describe('the turn’s words', () => {
   const run = (given: Partial<BotRun>) => done({ output: '', error: '', summary: undefined, ...given });
   it('tells data from words', () => {
     expect([isJson('{"a": 1}'), isJson('[1]'), isJson('{not json'), isJson('3'), isJson(''), isJson('words')]).toEqual([true, true, false, false, false, false]);
+    // A tool's answer cut to fit no longer parses; it is still never shown as the bot's words.
+    expect([isJson('{"os": [], "ret": [{"url": "https://api.github.com/re'), isJson('[{"id": 1}, {"id"'), isJson('[see below] and so on')]).toEqual([true, true, false]);
+    expect(answerOf(waiting({ output: '{"os": [], "ret": [{"url": "https://api.github.com/re' }), {})).toBe('');
     const spec = { loop: [{ id: 'digest', agent: 'Write' }, { id: 'slack', run: 'slack-send-message' }, { id: 'n', agent: 'x' }] };
     expect(answerOf(run({ output: '{"ok": true}', data: { digest: 'Three need you.', slack: { ok: true }, n: { not: 'words' } } }), spec)).toBe('Three need you.');
     expect(answerOf(run({ output: '{"ok": true}' }), {})).toBe('');

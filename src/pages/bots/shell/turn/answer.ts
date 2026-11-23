@@ -3,7 +3,10 @@
 // engine log lines are never the answer: they stay behind the turn's "Ran N steps" line and its Raw toggle.
 import type { BotRun, BotSpec } from '@/api/bots';
 
-/** True for text that is a JSON object or array: a step's data, not words for a person. */
+/**
+ * True for text that is a JSON object or array: a step's data, not words for a person. A server cuts a long answer to
+ * fit, so data cut short (it opens as an object or a list of them and no longer parses) is data all the same.
+ */
 export function isJson(text: string): boolean {
   const t = text.trim();
   if (!t || !/^[[{]/.test(t)) return false;
@@ -11,7 +14,7 @@ export function isJson(text: string): boolean {
     const v: unknown = JSON.parse(t);
     return typeof v === 'object' && v !== null;
   } catch {
-    return false;
+    return /^(\{\s*"[^"]*"\s*:|\[\s*[{["])/.test(t);
   }
 }
 
