@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router';
 import { api } from '@/api/client';
 import {
   botKeys,
+  isOrchestrator,
   problemsOf,
   useBotModels,
   useBotPlaces,
@@ -41,9 +42,10 @@ import { botPath, BotCat, effortOptions, Modal, shortModel, useShell } from './b
 import { MODES } from './Chat';
 import { ConnectorIcon } from './Connections';
 
-/** A bot made by hand starts by doing its job with what it is given; Claude writes the rest from the top field. */
-const FIRST_SPEC: BotSpec = { touches: 'read_only', loop: [{ id: 'work', agent: 'Do your job with what you were given: $input' }] };
-
+/** A bot made by hand starts by only reading; Claude writes the rest of how it works from the top field. */
+const FIRST_SPEC: BotSpec = { touches: 'read_only' };
+/** The most a standing task holds (the server's limit). */
+const TASK_MAX = 4000;
 
 /** What the server found wrong, as a sentence: without where in the bot's insides it found it. */
 function plain(problem: string): string {
@@ -143,6 +145,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
   const [name, setName] = useState(bot?.name ?? '');
   const [summary, setSummary] = useState(bot?.summary ?? '');
   const [instructions, setInstructions] = useState(bot?.instructions ?? '');
+  const [task, setTask] = useState(bot?.task ?? '');
   const [look, setLook] = useState<Look>(() => (bot?.look as Look | undefined) ?? randomLook());
   const [mascot, setMascot] = useState(bot?.mascot ?? '');
   const [voice, setVoice] = useState(bot?.voice ?? '');
@@ -174,8 +177,12 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
   const timed = schedule.every !== 'off' && schedule.every !== 'hour';
   const ask = bot ? 'Tell Claude what to change' : 'Describe your bot and Claude makes it';
   const decided = decides(spec);
-  const everywhere = places.data ?? [{ id: null, name: 'Glyphh cloud', mode: 'cloud' as const, linked: true }];
+  // Where it may run is the bot's own: one that needs a machine's files and commands is not offered Glyphh cloud.
+  const mayRunOn = bot?.can_run_on?.length ? bot.can_run_on : (['cloud', 'rrotor'] as const);
+  const cloudOk = mayRunOn.includes('cloud');
+  const everywhere = (places.data ?? [{ id: null, name: 'Glyphh cloud', mode: 'cloud' as const, linked: true }]).filter((p) => (p.id === null ? cloudOk : mayRunOn.includes('rrotor') || p.id === runsOn));
   const place = runsOn ? everywhere.find((p) => p.id === runsOn) : undefined;
+  const orchestrator = isOrchestrator(bot);
   const under = describing || deleting || picking;
 
   /** The bot as it stands in the fields, for Claude to change: its apps are those of the connections it has. */
@@ -250,6 +257,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
       name: name.trim(),
       summary: summary.trim(),
       instructions: instructions.trim(),
+      task: task.trim(),
       look,
       mascot,
       voice,
@@ -437,23 +445,33 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
               <small className="dim" role="status">
                 {sentence(schedule, bot && JSON.stringify(schedule) === JSON.stringify(scheduleOf(bot.schedule)) ? bot.next_run : undefined)}
               </small>
-              {schedule.every !== 'off' && (
-                <label>
-                  What it looks at each time
-                  <input value={schedule.input} placeholder="my unread email" maxLength={20_000} onChange={(e) => sched({ input: e.target.value })} />
-                </label>
-              )}
+              <label>
+                What it does when it runs on its own
+                <textarea aria-label="What it does when it runs on its own" rows={3} value={task} maxLength={TASK_MAX} placeholder="Go through my unread email and tell me what needs an answer today." onChange={(e) => setTask(e.target.value)} />
+                <small>{schedule.every === 'off' ? 'Its standing task. Nothing happens on its own until you choose when it runs.' : 'Its standing task: what it is told each time, as if you had typed it.'}</small>
+              </label>
 
               <h3>Where it runs</h3>
               <label>
                 <select aria-label="Where it runs" value={runsOn ?? ''} onChange={(e) => moveTo(e.target.value || null)}>
+                  {!cloudOk && runsOn === null && (
+                    <option value="" disabled>
+                      Choose a rrotor
+                    </option>
+                  )}
                   {everywhere.map((p) => (
                     <option key={p.id ?? ''} value={p.id ?? ''} disabled={!p.linked && p.id !== runsOn}>
                       {p.linked ? p.name : `${p.name} (offline)`}
                     </option>
                   ))}
                 </select>
-                <small>{runsOn ? 'On that machine, through its rrotor, so it can use the folders you choose there.' : 'On Glyphh. Nothing to install.'}</small>
+                <small>
+                  {runsOn
+                    ? `On that machine, through its rrotor, so it can use the folders you choose there.${cloudOk ? '' : ' It needs a rrotor: it cannot run on Glyphh cloud.'}`
+                    : cloudOk
+                      ? 'On Glyphh. Nothing to install.'
+                      : 'It needs a rrotor: it cannot run on Glyphh cloud.'}
+                </small>
               </label>
 
               <h3>Voice, model and effort</h3>
@@ -513,7 +531,8 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
                 </p>
               )}
               <div className="row end">
-                {bot && (
+                {/* The orchestrator is always there: it is changed like any bot, never deleted. */}
+                {bot && !orchestrator && (
                   <button type="button" className="btn ghost danger" onClick={() => setDeleting(true)}>
                     Delete bot
                   </button>
@@ -544,7 +563,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
       {picking && place && (
         <FolderPicker place={place} taken={folders.map((f) => f.path)} onAdd={(path) => setFolders((all) => (all.some((f) => f.path === path) ? all : [...all, { path, access: 'read' }]))} onClose={() => setPicking(false)} />
       )}
-      {bot && deleting && (
+      {bot && !orchestrator && deleting && (
         <Modal title={`Delete ${bot.name}?`} small front onClose={() => setDeleting(false)}>
           <p className="dim">Its runs and what it has learned go with it. Your connections stay. This cannot be undone.</p>
           {remove.error && <div className="err">{remove.error.message}</div>}

@@ -4,13 +4,13 @@
 // settings its editor, the crew's its one modal. Its styles are that app's own stylesheet (glyphh-bot.css), scoped to
 // this shell.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { useBots } from '@/api/bots';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { isOrchestrator, useBots } from '@/api/bots';
 import { useMe } from '@/api/queries';
 import { useWaiting, type Recent } from '@/api/recents';
 import { DecisionsPanel } from '@/bots/decisions/DecisionsPanel';
 import { useShellNav } from '@/layout/AppShell/AppShell';
-import { botPath, BotCat, ShellContext, type ShellApi } from './bits';
+import { botPath, BotCat, CREW_ROOM, ShellContext, type ShellApi } from './bits';
 import { BotChat, CrewChat } from './Chat';
 import { ConnectionModals } from './Connections';
 import { useCrew } from './crew';
@@ -80,6 +80,7 @@ export function BotsShell() {
   const navigate = useNavigate();
   const nav = useShellNav();
   const [params, setParams] = useSearchParams();
+  const { search } = useLocation();
   const bots = useBots();
   const crew = useCrew(bots.data);
   const waits = useWaiting();
@@ -90,11 +91,18 @@ export function BotsShell() {
   // Whose decisions the panel shows while the crew is the room: one of its bots.
   const [crewBot, setCrewBot] = useState<string | null>(null);
 
-  // The room: the bot in the address, else the crew.
+  // The room: the bot in the address, else the crew when the address says so (or carries a crew's run or an old link
+  // to one), else the orchestrator, which is where /bots opens with nothing chosen.
   const all = bots.data ?? [];
   const bot = name ? all.find((b) => b.slug === name) : undefined;
-  const crewOn = !name;
+  const orchestrator = all.find(isOrchestrator);
+  const crewAsked = params.get('room') === CREW_ROOM || params.has('run') || params.has('crew');
+  const toOrchestrator = !name && !crewAsked && orchestrator !== undefined;
+  const crewOn = !name && !toOrchestrator;
   const roomKey = name ? `bot:${name}` : 'crew';
+  useEffect(() => {
+    if (toOrchestrator && orchestrator) navigate(`${botPath(orchestrator.slug)}${search}`, { replace: true });
+  }, [toOrchestrator, orchestrator, search, navigate]);
   const members = all.filter((b) => crew.members.includes(b.id));
 
   const set = useCallback(
@@ -117,7 +125,7 @@ export function BotsShell() {
   useEffect(() => {
     if (!old) return;
     crew.open(old);
-    set({ crew: null });
+    set({ crew: null, room: CREW_ROOM });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [old]);
 
@@ -157,11 +165,12 @@ export function BotsShell() {
     setFresh(null);
     if (r.kind === 'bot' && r.bot_slug) return navigate(`${botPath(r.bot_slug)}?run=${encodeURIComponent(r.id)}`);
     if (r.project_slug) crew.open(r.project_slug);
-    navigate(`/bots?run=${encodeURIComponent(r.id)}`);
+    navigate(`/bots?room=${CREW_ROOM}&run=${encodeURIComponent(r.id)}`);
   };
   const newChat = () => {
     setFresh(roomKey);
-    set({ run: null });
+    // The crew's room stays the crew's once its run is out of the address.
+    set(crewOn ? { run: null, room: CREW_ROOM } : { run: null });
   };
   const closeEditor = () => set({ edit: null, new: null });
   const settled = !bots.isPending;
@@ -253,7 +262,7 @@ export function BotsShell() {
                           Nothing here is called {name}. Pick one on the left, or <Link to="/bots">go back to your bots</Link>.
                         </p>
                       </div>
-                    ) : settled ? (
+                    ) : settled && !toOrchestrator ? (
                       <div className="hero-wrap">
                         <Reactor size={600} className="backdrop" />
                         <div className="hero-crew solo-hero">
