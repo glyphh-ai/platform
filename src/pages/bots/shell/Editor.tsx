@@ -27,7 +27,6 @@ import {
   type BotScope,
   type BotSpec,
   type ConnectionTool,
-  type Every,
   type PermissionMode,
   type Place,
   type Said,
@@ -37,10 +36,11 @@ import { useMachineFolders } from '@/api/rrotorFolders';
 import { randomLook, type Look } from '@/bots/cat/look';
 import { DescribeMascotModal } from '@/bots/mascot/DescribeMascotModal';
 import { outcomesOf } from '../ada';
-import { DAYS, EVERY, scheduleOf, sentence, zones } from '../schedule';
+import { scheduleOf, sentence } from '../schedule';
 import { botPath, BotCat, effortOptions, Modal, shortModel, useShell } from './bits';
 import { MODES } from './Chat';
 import { ConnectorIcon } from './Connections';
+import { ScheduleFields } from './ScheduleFields';
 
 /** A bot made by hand starts by only reading; Claude writes the rest of how it works from the top field. */
 const FIRST_SPEC: BotSpec = { touches: 'read_only' };
@@ -174,7 +174,6 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
   const failed = create.error ?? update.error;
   const problems = problemsOf(failed);
   const reply = said.at(-1)?.role === 'assistant' ? said.at(-1)!.content : '';
-  const timed = schedule.every !== 'off' && schedule.every !== 'hour';
   const ask = bot ? 'Tell Claude what to change' : 'Describe your bot and Claude makes it';
   const decided = decides(spec);
   // Where it may run is the bot's own: one that needs a machine's files and commands is not offered Glyphh cloud.
@@ -405,43 +404,7 @@ export function BotEditor({ bot, onClose }: { bot: Bot | null; onClose: () => vo
               </div>
 
               <h3>When it runs</h3>
-              <div className="looks">
-                <select aria-label="When it runs" value={schedule.every} onChange={(e) => sched({ every: e.target.value as Every })}>
-                  {EVERY.map((e) => (
-                    <option key={e.value} value={e.value}>
-                      {e.value === 'off' ? 'Only when I run it' : e.label}
-                    </option>
-                  ))}
-                </select>
-                {schedule.every === 'week' && (
-                  <select aria-label="On" value={String(schedule.weekday)} onChange={(e) => sched({ weekday: Number(e.target.value) })}>
-                    {DAYS.map((d, i) => (
-                      <option key={d} value={i}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {schedule.every === 'month' && (
-                  <select aria-label="On day" value={String(schedule.day)} onChange={(e) => sched({ day: Number(e.target.value) })}>
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <option key={i} value={i + 1}>
-                        Day {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {timed && <input aria-label="At" type="time" step={60} value={schedule.at} onChange={(e) => e.target.value && sched({ at: e.target.value })} />}
-                {timed && (
-                  <select aria-label="Time zone" value={schedule.timezone} onChange={(e) => sched({ timezone: e.target.value })}>
-                    {zones(schedule.timezone).map((z) => (
-                      <option key={z} value={z}>
-                        {z.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
+              <ScheduleFields schedule={schedule} onChange={sched} />
               <small className="dim" role="status">
                 {sentence(schedule, bot && JSON.stringify(schedule) === JSON.stringify(scheduleOf(bot.schedule)) ? bot.next_run : undefined)}
               </small>

@@ -10,6 +10,9 @@ import { useMe } from '@/api/queries';
 import { useWaiting, type Recent } from '@/api/recents';
 import { DecisionsPanel } from '@/bots/decisions/DecisionsPanel';
 import { useShellNav } from '@/layout/AppShell/AppShell';
+import { ProgramPage } from '../programs/ProgramPage';
+import { NewProgram, ProgramsHome } from '../programs/Programs';
+import '../programs/programs.css';
 import { botPath, BotCat, CREW_ROOM, ShellContext, type ShellApi } from './bits';
 import { BotChat, CrewChat } from './Chat';
 import { ConnectionModals } from './Connections';
@@ -97,9 +100,12 @@ export function BotsShell() {
   const bot = name ? all.find((b) => b.slug === name) : undefined;
   const orchestrator = all.find(isOrchestrator);
   const crewAsked = params.get('room') === CREW_ROOM || params.has('run') || params.has('crew');
-  const toOrchestrator = !name && !crewAsked && orchestrator !== undefined;
-  const crewOn = !name && !toOrchestrator;
-  const roomKey = name ? `bot:${name}` : 'crew';
+  // The rail's Programs tab: the centre is the program picked there (`program`), or what a program is.
+  const programSlug = params.get('program');
+  const programsOn = params.get('rail') === 'programs' || programSlug !== null;
+  const toOrchestrator = !name && !crewAsked && !programsOn && orchestrator !== undefined;
+  const crewOn = !name && !toOrchestrator && !programsOn;
+  const roomKey = programsOn ? `program:${programSlug ?? ''}` : name ? `bot:${name}` : 'crew';
   useEffect(() => {
     if (toOrchestrator && orchestrator) navigate(`${botPath(orchestrator.slug)}${search}`, { replace: true });
   }, [toOrchestrator, orchestrator, search, navigate]);
@@ -132,7 +138,9 @@ export function BotsShell() {
   const decisions = (params.get('panel') ?? '').split(',').some((p) => p === 'decisions' || p === 'gates') || tab === 'gates' || tab === 'decisions';
   const connId = params.get('conn');
   const catalog = params.get('add') === '1';
-  const railTab: RailTab = params.get('rail') === 'connections' || connId || catalog ? 'connections' : 'bots';
+  const railTab: RailTab = params.get('rail') === 'connections' || connId || catalog ? 'connections' : programsOn ? 'programs' : 'bots';
+  const [makingProgram, setMakingProgram] = useState(false);
+  const openProgram = useCallback((slug: string | null) => set({ rail: 'programs', program: slug }), [set]);
   const editing = params.get('new') ? 'new' : params.get('edit') || tab === 'settings' || tab === 'loop' ? 'edit' : null;
   const focus = params.get('run');
 
@@ -176,9 +184,9 @@ export function BotsShell() {
   const settled = !bots.isPending;
   const missing = Boolean(name) && settled && !bot;
   // Whose decisions: the bot's own, or in the crew's room one of its bots.
-  const decided = bot ?? (crewOn ? (members.find((b) => b.slug === crewBot) ?? members[0]) : undefined);
+  const decided = programsOn ? undefined : (bot ?? (crewOn ? (members.find((b) => b.slug === crewBot) ?? members[0]) : undefined));
   // The work panels (files, terminal, editor…) are a rrotor's: only when what is selected runs on one.
-  const runsOn = bot ? (bot.runs_on ?? null) : crewOn ? crew.settings.runs_on : null;
+  const runsOn = programsOn ? null : bot ? (bot.runs_on ?? null) : crewOn ? crew.settings.runs_on : null;
 
   return (
     <ShellContext.Provider value={api}>
@@ -201,7 +209,7 @@ export function BotsShell() {
             <WorkspacePill crew={crew} />
             <Recents bots={all} needsYou={waits.data?.needs_you ?? 0} focus={focus} onPick={pick} onNew={newChat} />
             <div className="spacer" />
-            {bot && (
+            {bot && !programsOn && (
               <button type="button" className="icon" title={`Edit ${bot.name}`} aria-label={`Edit ${bot.name}`} onClick={() => api.editBot(bot.slug)}>
                 <Icon d={ICON.edit} size={16} />
               </button>
@@ -231,7 +239,10 @@ export function BotsShell() {
             <Rail
               open={railOpen}
               tab={railTab}
-              onTab={(t) => set({ rail: t === 'connections' ? 'connections' : null, conn: null, add: null })}
+              onTab={(t) => set({ rail: t === 'bots' ? null : t, conn: null, add: null, program: null })}
+              program={programSlug}
+              onProgram={openProgram}
+              onNewProgram={() => setMakingProgram(true)}
               bots={bots.data}
               crew={crew}
               bot={name ?? null}
@@ -244,7 +255,13 @@ export function BotsShell() {
             {railOpen && <button type="button" className="railscrim" aria-label="Close" onClick={() => setRailOpen(false)} />}
             <section className="desk">
               <div className="deskrow">
-                {bot ? (
+                {programsOn ? (
+                  programSlug ? (
+                    <ProgramPage key={programSlug} slug={programSlug} onOpen={openProgram} />
+                  ) : (
+                    <ProgramsHome onNew={() => setMakingProgram(true)} />
+                  )
+                ) : bot ? (
                   <BotChat key={bot.slug} bot={bot} focus={focus} fresh={fresh === roomKey} onSent={() => setFresh(null)} />
                 ) : crewOn && all.length > 0 ? (
                   <CrewChat key={crew.project?.slug ?? 'none'} crew={crew} bots={all} focus={focus} fresh={fresh === roomKey} onSent={() => setFresh(null)} />
@@ -317,6 +334,15 @@ export function BotsShell() {
 
           {editing === 'new' && <BotEditor key="new" bot={null} onClose={closeEditor} />}
           {editing === 'edit' && bot && <BotEditor key={bot.id} bot={bot} onClose={closeEditor} />}
+          {makingProgram && (
+            <NewProgram
+              onClose={() => setMakingProgram(false)}
+              onMade={(slug) => {
+                setMakingProgram(false);
+                openProgram(slug);
+              }}
+            />
+          )}
           {crewSettings && <CrewSettings crew={crew} bots={all} onClose={() => setCrewSettings(false)} />}
           <ConnectionModals open={connId} catalog={catalog} onOpen={(id) => set({ conn: id })} onCatalog={(open) => set({ add: open ? '1' : null })} />
           {toast && (

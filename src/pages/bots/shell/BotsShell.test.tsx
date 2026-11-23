@@ -41,11 +41,11 @@ const rail = () => screen.findByRole('complementary', { name: 'Bots and connecti
 const pills = () => within(screen.getByRole('group', { name: 'For this chat' })).getAllByRole('combobox');
 
 describe('the Bots area, as the Glyphh Bot app', () => {
-  it('has the rail (BOTS | CONNECTIONS, the crew card, the bots, New bot, the account), the chat and the status bar, with the logo as the image', async () => {
+  it('has the rail (BOTS | PROGRAMS | CONNECTIONS, the crew card, the bots, New bot, the account), the chat and the status bar, with the logo as the image', async () => {
     on({ bots: [inbox(), inbox({ id: 'b-2', slug: 'quiet', name: 'Quiet', summary: 'Says little.', gate_models: [] })], runs: [waiting()] }, { projects: [] });
     renderApp('/bots');
     const side = await rail();
-    expect(within(side).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Bots', 'Connections']);
+    expect(within(side).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Bots', 'Programs', 'Connections']);
     expect(within(side).getByRole('tab', { name: 'Bots' })).toHaveAttribute('aria-selected', 'true');
     const bots = await within(side).findByRole('navigation', { name: 'Your bots' });
     await waitFor(() => expect(within(bots).getAllByRole('link')).toHaveLength(2));

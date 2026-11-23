@@ -1,4 +1,5 @@
-// The left rail, as the Glyphh Bot app's (glyphh-bot src/renderer/src/Left.tsx): BOTS | CONNECTIONS on top; under
+// The left rail, as the Glyphh Bot app's (glyphh-bot src/renderer/src/Left.tsx): BOTS | PROGRAMS | CONNECTIONS on top
+// (Programs: the org's programs, ../programs/Programs.tsx); under
 // Bots the crew card (tick the cats that are in it; a small edit opens Crew settings), then the bots (a round cat, the
 // name, a line that says what it is for or what it is doing) and New bot; under Connections the org's connections; the
 // account at the foot.
@@ -7,11 +8,12 @@ import { Link } from 'react-router';
 import { isOrchestrator, working, type Bot } from '@/api/bots';
 import { useMe } from '@/api/queries';
 import { botPath, BotCat, CREW_PATH, useEscape, useShell } from './bits';
+import { ProgramsRail } from '../programs/Programs';
 import { Connections } from './Connections';
 import { CREW_MAX, type Crew } from './crew';
 import { Icon, ICON } from './icons';
 
-export type RailTab = 'bots' | 'connections';
+export type RailTab = 'bots' | 'programs' | 'connections';
 
 type BotsProps = {
   bots: Bot[] | undefined;
@@ -139,20 +141,41 @@ function Account() {
   );
 }
 
-type Props = BotsProps & { tab: RailTab; onTab: (t: RailTab) => void; onConnection: (id: string | null) => void; onCatalog: (open: boolean) => void; open: boolean };
+type Props = BotsProps & {
+  tab: RailTab;
+  onTab: (t: RailTab) => void;
+  onConnection: (id: string | null) => void;
+  onCatalog: (open: boolean) => void;
+  open: boolean;
+  /** The program whose page is open, and opening one or making one. */
+  program: string | null;
+  onProgram: (slug: string) => void;
+  onNewProgram: () => void;
+};
 
-export function Rail({ tab, onTab, onConnection, onCatalog, open, ...bots }: Props) {
+const TABS: ReadonlyArray<{ tab: RailTab; label: string }> = [
+  { tab: 'bots', label: 'Bots' },
+  { tab: 'programs', label: 'Programs' },
+  { tab: 'connections', label: 'Connections' },
+];
+
+export function Rail({ tab, onTab, onConnection, onCatalog, open, program, onProgram, onNewProgram, ...bots }: Props) {
   return (
     <aside className={`rail left ${open ? 'open' : ''}`} aria-label="Bots and connections">
       <div className="tabs" role="tablist" aria-label="Rail">
-        <button type="button" role="tab" aria-selected={tab === 'bots'} className={tab === 'bots' ? 'on' : ''} onClick={() => onTab('bots')}>
-          Bots
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'connections'} className={tab === 'connections' ? 'on' : ''} onClick={() => onTab('connections')}>
-          Connections
-        </button>
+        {TABS.map((t) => (
+          <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} className={tab === t.tab ? 'on' : ''} onClick={() => onTab(t.tab)}>
+            {t.label}
+          </button>
+        ))}
       </div>
-      {tab === 'bots' ? <Bots {...bots} /> : <Connections onOpen={onConnection} onCatalog={onCatalog} />}
+      {tab === 'bots' ? (
+        <Bots {...bots} />
+      ) : tab === 'programs' ? (
+        <ProgramsRail current={program} onOpen={onProgram} onNew={onNewProgram} />
+      ) : (
+        <Connections onOpen={onConnection} onCatalog={onCatalog} />
+      )}
       <Account />
     </aside>
   );
