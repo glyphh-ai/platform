@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderApp, stubLocation } from '@/test/render';
 import { http, HttpResponse, server, serverUrl, sessionHandler } from '@/test/server';
 import { forgetLogin, pendingLogin, rememberLogin } from './pendingLogin';
@@ -318,17 +318,6 @@ describe('Server pages', () => {
     expect(screen.getByText('tr-77')).toBeInTheDocument();
   });
 
-  it('/github says where the app is installed', async () => {
-    renderApp('/github?installed=chris-t');
-    const card = await screen.findByRole('heading', { name: 'GitHub App installed' });
-    expect(within(card.parentElement!).getByText('chris-t')).toBeInTheDocument();
-  });
-
-  it('/github without a name says it is on the person’s account', async () => {
-    renderApp('/github');
-    expect(await screen.findByText('your account')).toBeInTheDocument();
-  });
-
   it('/error without a message says something went wrong', async () => {
     renderApp('/error');
     expect(await screen.findByText('Something went wrong.')).toBeInTheDocument();
@@ -339,4 +328,13 @@ describe('Server pages', () => {
     renderApp('/nope');
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
   });
+
+  // What Glyphh no longer has is at no address: its old pages are gone, not sent somewhere else.
+  it.each(['/bots', '/runtimes', '/licence', '/apps', '/runtime-keys', '/connections', '/projects', '/templates', '/github', '/settings/claude-key'])(
+    '%s is no page any more',
+    async (path) => {
+      renderApp(path);
+      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+    },
+  );
 });
