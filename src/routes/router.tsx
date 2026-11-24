@@ -49,6 +49,19 @@ function MovedWithHash({ to }: { to: string }) {
 /** Where a page of Ada's goes while Ada Cloud is off: the one page that needs none of it. */
 const WITHOUT_ADA = '/marketplace';
 
+/**
+ * Addresses of what Glyphh no longer has (2026-11-24), each with everything under it, so an old link or bookmark
+ * lands somewhere. The old Marketplace, the template and bot libraries and the Bots area go to the Marketplace; a
+ * plugin can therefore not be opened at /marketplace/models or /marketplace/bots.
+ */
+export const GONE_TO_MARKETPLACE = ['bots', 'approvals', 'connections', 'projects', 'swarms', 'programs', 'templates', 'marketplace/models', 'marketplace/bots'];
+/** rrotor's pages and the GitHub App's go Home (which is the Marketplace while Ada Cloud is off). */
+export const GONE_TO_HOME = ['runtimes', 'runtime-keys', 'licence', 'apps', 'artifacts', 'github', 'getting-started', 'machines', 'logs'];
+/** Settings pages that are gone, to Home too. */
+export const GONE_SETTINGS = ['claude-key', 'github-token', 'licence', 'logs'];
+
+const gone = (paths: string[], to: string): RouteObject[] => paths.map((path) => ({ path: `${path}/*`, element: <Navigate to={to} replace /> }));
+
 export const routes: RouteObject[] = [
   // Signed-in pages. Glyphh is Ada (2026-11-24): Home, Models, API Keys and Usage are Ada Cloud's, and the Marketplace
   // shows the plugins in github.com/glyphh-ai/plugins.
@@ -141,6 +154,7 @@ export const routes: RouteObject[] = [
       { path: 'auth', element: <AuthPage />, handle: crumbs('Settings', 'Auth') },
       { path: 'profile', element: <ProfilePage />, handle: crumbs('Settings', 'Profile') },
       { path: 'installs', element: <InstallsPage />, handle: crumbs('Settings', 'Installs') },
+      ...gone(GONE_SETTINGS, '/'),
       // Ada's versions (2026-11-21, was the Ada page in the main sidebar).
       {
         path: 'releases',
@@ -166,6 +180,8 @@ export const routes: RouteObject[] = [
   adminRoutes,
   { path: 'account', element: <Moved to="/settings/profile" /> },
   { path: 'billing', element: <Moved to="/settings/billing" /> },
+  ...gone(GONE_TO_MARKETPLACE, '/marketplace'),
+  ...gone(GONE_TO_HOME, '/'),
 
   // Sign-in and consent: the routes the server sends a browser to.
   { path: 'login', element: <LoginPage /> },

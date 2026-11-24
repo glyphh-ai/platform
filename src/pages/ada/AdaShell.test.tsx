@@ -28,13 +28,6 @@ describe('with Ada Cloud on', () => {
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent(`Ada${title}`);
   });
 
-  it.each(['/runtimes', '/machines', '/logs', '/getting-started', '/licence', '/settings/licence', '/runtime-keys', '/apps', '/bots'])(
-    'has no %s: what it showed is gone',
-    async (path) => {
-      renderApp(path);
-      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
-    },
-  );
 
   it('opens Home, not Add a runtime, from the old ?add=1 link', async () => {
     renderApp('/?add=1');

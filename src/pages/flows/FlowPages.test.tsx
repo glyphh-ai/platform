@@ -328,13 +328,4 @@ describe('Server pages', () => {
     renderApp('/nope');
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
   });
-
-  // What Glyphh no longer has is at no address: its old pages are gone, not sent somewhere else.
-  it.each(['/bots', '/runtimes', '/licence', '/apps', '/runtime-keys', '/connections', '/projects', '/templates', '/github', '/settings/claude-key'])(
-    '%s is no page any more',
-    async (path) => {
-      renderApp(path);
-      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
-    },
-  );
 });

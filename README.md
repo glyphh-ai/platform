@@ -49,8 +49,11 @@ Glyphh is Ada alone (2026-11-24). The platform has no bots, hosted connections, 
 runtimes (rrotor), runtime keys, licence keys, nodes, apps catalogue or GitHub App pages, and calls none of the
 server's endpoints for them (`/v1/bots*`, `/v1/connections*`, `/v1/programs*`, `/v1/projects*`, `/v1/recents`,
 `/v1/github*`, `/v1/templates*`, `/v1/apps*`, `/v1/runtimes*`, `/v1/runtime/*`, `/v1/license/*`). Their old addresses
-(`/bots`, `/runtimes`, `/licence`, `/apps`, `/runtime-keys`, `/connections`, `/projects`, `/templates`, `/github`,
-`/settings/claude-key`) are "Page not found". Of an answer it still reads (`/v1/me`, `/v1/plans`, `/v1/billing`,
+are moved on, each with everything under it and with a replace, so Back does not return to them (`src/routes/router.tsx`):
+`/bots`, `/approvals`, `/connections`, `/projects`, `/swarms`, `/programs`, `/templates`, `/marketplace/models` and
+`/marketplace/bots` go to `/marketplace`; `/runtimes`, `/runtime-keys`, `/licence`, `/apps`, `/artifacts`, `/github`,
+`/getting-started`, `/machines`, `/logs`, `/settings/claude-key`, `/settings/github-token`, `/settings/licence` and
+`/settings/logs` go to `/` (Home, which is the Marketplace while Ada Cloud is off). Of an answer it still reads (`/v1/me`, `/v1/plans`, `/v1/billing`,
 `/v1/billing/series`, `/v1/org/sso`, the staff API) it needs none of the fields that went with them: a plan's `limits`
 and its runtime features, `precedents` per node, `connections`, `bots`, `reviewers`, `licences`.
 
