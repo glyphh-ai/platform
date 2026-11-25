@@ -1,3 +1,5 @@
+> **Moved.** This repository is archived. It now lives, with its full history, in [glyphh-ai/glyphh](https://github.com/glyphh-ai/glyphh/tree/main/platform) as `platform/`. Ada is a Glyphh Labs project and is no longer a hosted service: https://glyphh.ai
+
 # platform
 
 The Glyphh platform, https://platform.glyphh.ai: the one web app a person uses. Glyphh is one thing, Ada. They sign in,
